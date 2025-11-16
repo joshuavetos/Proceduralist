@@ -1,241 +1,107 @@
 # Proceduralist
 
-![Build](https://img.shields.io/github/actions/workflow/status/joshuavetos/Proceduralist/ci.yml?branch=main)
-![Tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-95%25-blue)
-![Python](https://img.shields.io/badge/python-3.11+-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-active-success)
+Proceduralist is a hardened, self-auditing governance engine designed for environments where integrity, traceability, and deterministic behavior are non-negotiable. It provides a unified framework for append-only ledgering, policy-driven governance decisions, reproducible state verification, and cryptographically signed memory operations.
 
----
+This repository represents the reference implementation of the Proceduralist Engine, built to power high-assurance systems, agent orchestration frameworks, and autonomous auditing pipelines.
 
-## ⚙️ **What is Proceduralist?**
+## Features
 
-**Proceduralist** is a hardened, self-auditing governance engine that merges:
+### Ledger System
+- Merkle-verified append-only ledger (`ledger.jsonl`)
+- Immutable hash-chained entries
+- Deterministic serialization and hashing
+- Corruption detection and Merkle-state replay
+- Indexed database for fast lookup and historical inspection
 
-- a **Merkle‑verified append‑only ledger**,  
-- a **policy‑driven governance kernel**,  
-- a **cryptographically signed memory engine**,  
-- and a **diagnostics toolkit** for structural integrity, drift, and replay attacks.
+### Governance Kernel
+- Policy-driven evaluation
+- Quorum simulation
+- Version-pinned policies with rollback capability
+- Governance tokens with freshness validation
+- Verified decision receipts
 
-It provides **deterministic, reproducible receipts** for every agent action — forming the backbone of an auditable AI governance stack.
+### Memory Engine
+- Canonical serialization (deterministic JSON)
+- Immutable payload snapshots
+- Ed25519 signatures (PyNaCl or OpenSSL fallback)
+- State hashing for reproducible audits
+- Cold-start reproducibility guarantees
 
-Proceduralist is the “trust substrate” beneath Tessrax.
+### Verification Pipeline
+- End-to-end reproducibility tests
+- Environment cold-boot verification
+- State divergence detection (index ↔ ledger ↔ merkle)
+- Structured exception model for predictable failure modes
 
----
+## Installation
 
-## 📐 **Architecture Overview**
+Proceduralist requires Python 3.11+.
 
 ```
-core/
- ├── memory_engine.py        → Ed25519 ledger writer + Merkle state
- ├── governance_kernel.py    → Contradiction classifier + severity engine
- ├── models.py               → Receipt validation models
- ├── time.py                 → Canonical UTC time helpers
- └── typecheck.py            → FrozenPayload type verification
-
-governance/
- ├── policy_registry.py      → Policy versioning + rollback
- ├── token_guard.py          → Anti‑replay governance token validator
- └── explorer.py             → Governance summaries
-
-ledger/
- ├── merkle.py               → Merkle accumulator + hash verification
- ├── index_backend.py        → SQLite / RocksDB index backend
- ├── epochal.py              → Epoch manager + snapshot exporter
- ├── auto_repair.py          → Ledger/index repair engine
- ├── parallel_replay.py      → Multithreaded Merkle replay
- ├── compaction.py           → Retention + sharding
- ├── stress_harness.py       → High‑volume synthetic ledger generator
- ├── receipt_diff.py         → Semantic diff
- └── verify_ledger.py        → Full verification suite
-
-cli/
- └── tessraxctl.py           → Governance & diagnostics command tool
-
-docs/
- └── architecture.svg         → Auto‑generated architecture diagram
-```
-
----
-
-## 🧩 **Architecture Diagram**
-
-![](docs/architecture.svg)
-
-Proceduralist exposes a unified contract:
-
-- **Every event is signed.**
-- **Every event is hashed.**
-- **Every event is Merkle‑committed.**
-- **Every event is index‑aligned.**
-- **Every event is auditable.**
-
-No silent writes. No drift. No ambiguity.
-
----
-
-## 🛠️ Installation
-
-```bash
-git clone https://github.com/joshuavetos/Proceduralist
+git clone https://github.com/joshuavetos/Proceduralist.git
 cd Proceduralist
 pip install -r requirements.txt
 ```
 
-Ensure you have:
+## Running Tests
 
-- Python 3.11+
-- `pynacl`
-- SQLite 3.34+
-- Governance token exported:
-
-```bash
-export TESSRAX_GOVERNANCE_TOKEN="your-approval-token"
-```
-
----
-
-## 🚀 CLI Usage (`tessraxctl`)
-
-Proceduralist includes a full governance and diagnostics CLI.
-
-### **List of commands**
-
-```bash
-tessraxctl auto-repair
-tessraxctl auto-diagnose
-tessraxctl rebuild-index
-tessraxctl diff-receipts <left.json> <right.json>
-tessraxctl explore-governance
-tessraxctl stress-harness <output.jsonl> --entries 10000
-tessraxctl export-architecture <output.svg>
-tessraxctl export-merkle-svg <output.svg>
-```
-
-### Example:
-
-```bash
-tessraxctl auto-diagnose
-```
-
-Produces:
-
-- Merkle root verification  
-- Index alignment & hash diff  
-- automatic repair suggestions  
-- persisted diagnostic report  
-
----
-
-## 🔐 Governance Token Model
-
-Proceduralist introduces **anti-replay token freshness**:
-
-- Requires `TESSRAX_GOVERNANCE_TOKEN`
-- Tokens expire on inactivity
-- Tokens cannot be reused across ledger events
-- Full state persisted in `token_state.json`
-
-If replay or expiration is detected, all writes halt with:
+Proceduralist includes a comprehensive test suite covering the serialization engine, Merkle accumulator, memory engine, key-management subsystem, and governance kernel.
 
 ```
-GovernanceTokenError
-```
-
----
-
-## 🔑 Key Rotation Model
-
-Keys rotate via:
-
-```
-rotate_key(reason="…", governance_token="…")
-```
-
-Each rotation generates:
-
-- cross‑signed proof (old key → new key, new key → old key)  
-- rotation receipts  
-- rotation policy snapshot  
-- enforcement of multi‑approver requirements  
-
-All stored in:
-
-```
-tessrax/infra/signing_keys/
-```
-
----
-
-## 🧪 Running Tests
-
-Proceduralist includes a full upgrade suite:
-
-```bash
 pytest -q
 ```
 
-Includes tests for:
+To run coverage:
 
-- Merkle replay  
-- Epoch assignments  
-- Key rotation  
-- Governance tokens  
-- Auto-diagnostics  
-- Index backends  
-- CLI integration  
-- Stress harness  
+```
+pytest --cov=tessrax --cov-report=term-missing
+```
 
----
+## Project Layout
 
-## 🧭 Project Philosophy
+```
+tessrax/
+  core/
+    memory_engine.py
+    governance_kernel.py
+    serialization.py
+  ledger/
+    ledger.jsonl
+    index.db
+    merkle_state.json
+  infra/
+    key_registry.py
+tests/
+docs/
+```
 
-Proceduralist exists to enforce:
+## Roadmap
 
-- **Determinism** over probability  
-- **Receipts** over trust  
-- **Governance** over vibes  
-- **Verification** over plausibility  
-- **Irreversibility** over hidden state  
+A complete roadmap is maintained at `docs/ROADMAP.md` and includes planned improvements to:
+- Ledger compaction and snapshotting
+- Multi-signature governance
+- Sharded ledger segments and concurrency improvements
+- CLI tools for inspection and debugging
+- Advanced validation and policy engines
+- Rust-backed hashing options
+- Visualization tools
 
-It is designed for environments that cannot afford hallucinated state or silent corruption.
+## Philosophy
 
----
+Proceduralist is built on four principles:
 
-## 📌 Roadmap
+1. **Determinism**  
+   Every component must behave identically across environments and cold starts.
 
-- [ ] Full web-based governance explorer  
-- [ ] Block-level Merkle replay visualizer  
-- [ ] Real-time event streaming API  
-- [ ] Multi-key quorum signatures  
-- [ ] Encrypted off-device snapshots  
-- [ ] WASM runtime for lightweight agents  
+2. **Auditability**  
+   All outputs must be verifiable, reproducible, and permanently traceable.
 
----
+3. **Integrity**  
+   No hidden state, no mutable history, no ambiguity in serialization or hashing.
 
-## 🛡 Security Notes
+4. **Governance as Code**  
+   Decisions must be governed by explicit, inspectable policy rather than implicit behavior.
 
-- Never commit private keys to version control.
-- Always rotate keys after sensitive deployments.
-- Keep governance tokens ephemeral.
-- Ledger writes MUST be on a trusted host.
-- Do not disable Merkle verification unless in offline recovery.
+## License
 
----
-
-## 📄 License
-
-MIT — free to modify, fork, reuse.
-
----
-
-## ⭐ Contribute
-
-Issues and PRs welcome.  
-
-If you build tooling on top of Proceduralist, tag the repo — the ecosystem grows stronger with each extension.
-
----
-
-**Proceduralist — deterministic governance for uncertain systems.**
+MIT License. See `LICENSE` for details.

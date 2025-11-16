@@ -98,16 +98,40 @@ def _validate_event_type(event_type: str, line_no: int) -> None:
 
 
 def _coerce_verify_key(raw: bytes) -> VerifyKey:
+    """Support canonical, double-hex, and raw encodings for verify keys."""
+
+    text: str | None
     try:
         text = raw.decode("utf-8").strip()
     except UnicodeDecodeError:
-        text = ""
+        text = None
+
     if text:
         try:
-            return VerifyKey(bytes.fromhex(text))
+            candidate = bytes.fromhex(text)
         except ValueError:
-            pass
-    return VerifyKey(raw)
+            candidate = None
+        else:
+            if len(candidate) == 32:
+                return VerifyKey(candidate)
+            if len(candidate) == 64:
+                try:
+                    nested_text = candidate.decode("ascii").strip()
+                except UnicodeDecodeError:
+                    nested_text = ""
+                if nested_text:
+                    try:
+                        nested_candidate = bytes.fromhex(nested_text)
+                    except ValueError:
+                        nested_candidate = None
+                    else:
+                        if len(nested_candidate) == 32:
+                            return VerifyKey(nested_candidate)
+
+    compact_raw = raw.strip()
+    if len(compact_raw) != 32:
+        raise LedgerVerificationError("Verification key material is not 32 bytes.")
+    return VerifyKey(compact_raw)
 
 
 def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: int) -> None:

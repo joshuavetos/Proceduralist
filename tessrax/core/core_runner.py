@@ -19,7 +19,7 @@ import json
 import os
 import signal
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from sqlalchemy import create_engine, or_, select, update
@@ -68,14 +68,14 @@ def _atomic_claim(db: Session, node: StateNode) -> bool:
     stmt = (
         update(StateNode)
         .where(StateNode.id == node.id, StateNode.processed.is_(False))
-        .values(processed=True, processed_at=datetime.utcnow())
+        .values(processed=True, processed_at=datetime.now(timezone.utc))
     )
     result = db.execute(stmt)
     db.commit()
     claimed = result.rowcount == 1
     if claimed:
         node.processed = True
-        node.processed_at = datetime.utcnow()
+        node.processed_at = datetime.now(timezone.utc)
     return claimed
 
 
@@ -145,10 +145,10 @@ def _record_governance_event(decision) -> None:
 
 
 def _dead_letter(db: Session, node: StateNode, error_msg: str) -> None:
-    node.deleted_at = datetime.utcnow()
+    node.deleted_at = datetime.now(timezone.utc)
     node.last_error = error_msg
     node.processed = True
-    node.processed_at = datetime.utcnow()
+    node.processed_at = datetime.now(timezone.utc)
     db.commit()
     print(f"[CORE] Node {node.id} moved to DEAD LETTER QUEUE.")
 

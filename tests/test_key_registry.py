@@ -10,6 +10,7 @@ import pytest
 
 
 def _sandbox_registry(tmp_path: Path):
+    os.environ.pop("TESSRAX_REQUIRED_APPROVERS", None)
     module = importlib.reload(importlib.import_module("tessrax.infra.key_registry"))
     signing_root = tmp_path / "infra" / "signing_keys"
     signing_root.mkdir(parents=True)

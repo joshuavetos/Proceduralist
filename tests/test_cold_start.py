@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import os
 from dataclasses import dataclass
 from pathlib import Path
 import sys
@@ -42,12 +44,17 @@ def test_cold_start(tmp_path: Path) -> None:
     legacy_pub_path = infra_dir / "signing_key.pub"
 
     key_id = "test-key"
+    os.environ["TESSRAX_KEY_ID"] = key_id
+    os.environ["TESSRAX_GOVERNANCE_TOKEN"] = "test-governance"
+    key_registry = importlib.reload(importlib.import_module("tessrax.infra.key_registry"))
+    key_registry.SIGNING_KEYS_DIR = signing_keys_dir
+    key_registry.ACTIVE_KEY_PATH = signing_keys_dir / "active_key.json"
+    key_registry.ROTATION_STATE_PATH = signing_keys_dir / "rotation_state.json"
+    key_registry.LEGACY_PRIVATE_KEY_PATH = hmac_key_path
+    key_registry.LEGACY_PUBLIC_KEY_PATH = legacy_pub_path
+
     core_memory.LEDGER_PATH = ledger_path
     core_memory.INDEX_PATH = index_path
-    core_memory.SIGNING_KEY_PATH = hmac_key_path
-    core_memory.SIGNING_KEYS_DIR = signing_keys_dir
-    core_memory.LEGACY_PUBLIC_KEY_PATH = legacy_pub_path
-    core_memory.SIGNING_KEY_ID = key_id
 
     ledger_module.LEDGER_PATH = ledger_path
     ledger_module.INDEX_PATH = index_path

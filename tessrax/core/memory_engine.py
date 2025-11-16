@@ -22,12 +22,10 @@ from typing import Any, Mapping
 
 from nacl.signing import SigningKey
 
+from tessrax.infra import key_registry
+
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
-SIGNING_KEY_PATH = Path("tessrax/infra/signing_key.pem")
-SIGNING_KEYS_DIR = Path("tessrax/infra/signing_keys")
-LEGACY_PUBLIC_KEY_PATH = Path("tessrax/infra/signing_key.pub")
-SIGNING_KEY_ID = os.getenv("TESSRAX_KEY_ID", "legacy")
 AUDITOR_IDENTITY = "Tessrax Governance Kernel v16"
 CANONICAL_EVENT_TYPES: tuple[str, ...] = ("STATE_AUDITED", "CONTRADICTION_DETECTED")
 
@@ -57,61 +55,11 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
-def _ensure_key() -> SigningKey:
-    """Load or create the Ed25519 signing key (seed stored as hex)."""
+def _load_active_key() -> tuple[str, SigningKey]:
+    """Retrieve the active (key_id, SigningKey) pair from the registry."""
 
-    SIGNING_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    key_bytes: bytes
-    if not SIGNING_KEY_PATH.exists():
-        signing_key = SigningKey.generate()
-        SIGNING_KEY_PATH.write_text(signing_key.encode().hex(), encoding="utf-8")
-        os.chmod(SIGNING_KEY_PATH, 0o600)
-        _sync_public_material(signing_key)
-        return signing_key
-
-    raw_contents = SIGNING_KEY_PATH.read_bytes().strip()
-    key_hex: str | None = None
-    try:
-        key_hex = raw_contents.decode("utf-8").strip()
-    except UnicodeDecodeError:
-        key_hex = None
-
-    if key_hex:
-        try:
-            key_bytes = bytes.fromhex(key_hex)
-        except ValueError as exc:  # pragma: no cover - invalid manual edits
-            raise RuntimeError("Signing key file is not valid hexadecimal.") from exc
-    else:
-        key_bytes = raw_contents
-
-    if len(key_bytes) != 32:
-        raise RuntimeError("Signing key must be exactly 32 bytes of entropy.")
-
-    # Persist as canonical hex to avoid legacy binary encodings.
-    SIGNING_KEY_PATH.write_text(key_bytes.hex(), encoding="utf-8")
-
-    signing_key = SigningKey(key_bytes)
-    _sync_public_material(signing_key)
-    return signing_key
-
-
-def _sync_public_material(signing_key: SigningKey) -> None:
-    """Write the verify key material for both legacy and keyed locations."""
-
-    SIGNING_KEYS_DIR.mkdir(parents=True, exist_ok=True)
-    LEGACY_PUBLIC_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    verify_key_hex = signing_key.verify_key.encode().hex() + "\n"
-    (SIGNING_KEYS_DIR / f"{SIGNING_KEY_ID}.pub").write_text(verify_key_hex, encoding="utf-8")
-    LEGACY_PUBLIC_KEY_PATH.write_text(verify_key_hex, encoding="utf-8")
-
-
-def _sign_event(canonical: str) -> str:
-    """Sign the canonical JSON payload with Ed25519 and return the signature hex."""
-
-    signing_key = _ensure_key()
-    signed = signing_key.sign(canonical.encode("utf-8"))
-    return signed.signature.hex()
+    key_id, signing_key = key_registry.load_active_signing_key()
+    return key_id, signing_key
 
 
 def _ensure_index_schema() -> None:
@@ -180,6 +128,7 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
 
     timestamp = datetime.now(tz=timezone.utc).isoformat()
     payload_hash = canonical_payload_hash(payload)
+    key_id, signing_key = _load_active_key()
     canonical_event = {
         "event_type": event_type,
         "timestamp": timestamp,
@@ -187,11 +136,11 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
         "payload_hash": payload_hash,
         "audited_state_hash": audited_state_hash,
         "auditor": AUDITOR_IDENTITY,
-        "key_id": SIGNING_KEY_ID,
+        "key_id": key_id,
     }
 
     canonical_str = canonical_json(canonical_event)
-    signature = _sign_event(canonical_str)
+    signature = signing_key.sign(canonical_str.encode("utf-8")).signature.hex()
     ledger_entry = {**canonical_event, "signature": signature}
     offset = _append_to_ledger(ledger_entry)
     _append_to_index(offset, event_type, audited_state_hash, payload_hash, timestamp)

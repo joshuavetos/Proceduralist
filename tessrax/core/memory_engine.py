@@ -2,7 +2,7 @@
 
 Responsibilities:
 * canonical JSON serialisation for deterministic hashing;
-* Ed25519/HMAC-style signing via a managed key file;
+* Ed25519 signing via a managed key file;
 * atomic append-only writes to the ledger file protected by POSIX locks;
 * mirrored writes to the ledger index database to support contradiction checks;
 * runtime verification of caller input per Tessrax RVC-001.
@@ -12,15 +12,15 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
-import hmac
 import json
 import os
-import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+
+from nacl.signing import SigningKey
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
@@ -57,33 +57,61 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
-def _ensure_key() -> bytes:
+def _ensure_key() -> SigningKey:
+    """Load or create the Ed25519 signing key (seed stored as hex)."""
+
     SIGNING_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    key_bytes: bytes
     if not SIGNING_KEY_PATH.exists():
-        SIGNING_KEY_PATH.write_bytes(secrets.token_bytes(32))
+        signing_key = SigningKey.generate()
+        SIGNING_KEY_PATH.write_text(signing_key.encode().hex(), encoding="utf-8")
         os.chmod(SIGNING_KEY_PATH, 0o600)
-    key = SIGNING_KEY_PATH.read_bytes()
-    if len(key) < 32:
-        raise RuntimeError("Signing key is invalid; ensure at least 32 bytes of entropy.")
-    key = key[:64]
-    _sync_public_material(key)
-    return key
+        _sync_public_material(signing_key)
+        return signing_key
+
+    raw_contents = SIGNING_KEY_PATH.read_bytes().strip()
+    key_hex: str | None = None
+    try:
+        key_hex = raw_contents.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        key_hex = None
+
+    if key_hex:
+        try:
+            key_bytes = bytes.fromhex(key_hex)
+        except ValueError as exc:  # pragma: no cover - invalid manual edits
+            raise RuntimeError("Signing key file is not valid hexadecimal.") from exc
+    else:
+        key_bytes = raw_contents
+
+    if len(key_bytes) != 32:
+        raise RuntimeError("Signing key must be exactly 32 bytes of entropy.")
+
+    # Persist as canonical hex to avoid legacy binary encodings.
+    SIGNING_KEY_PATH.write_text(key_bytes.hex(), encoding="utf-8")
+
+    signing_key = SigningKey(key_bytes)
+    _sync_public_material(signing_key)
+    return signing_key
 
 
-def _sync_public_material(key: bytes) -> None:
-    """Mirror the signing key into verifier locations (legacy + key-id specific)."""
+def _sync_public_material(signing_key: SigningKey) -> None:
+    """Write the verify key material for both legacy and keyed locations."""
 
     SIGNING_KEYS_DIR.mkdir(parents=True, exist_ok=True)
     LEGACY_PUBLIC_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    key_hex = key.hex() + "\n"
-    (SIGNING_KEYS_DIR / f"{SIGNING_KEY_ID}.pub").write_text(key_hex, encoding="utf-8")
-    LEGACY_PUBLIC_KEY_PATH.write_text(key_hex, encoding="utf-8")
+    verify_key_hex = signing_key.verify_key.encode().hex() + "\n"
+    (SIGNING_KEYS_DIR / f"{SIGNING_KEY_ID}.pub").write_text(verify_key_hex, encoding="utf-8")
+    LEGACY_PUBLIC_KEY_PATH.write_text(verify_key_hex, encoding="utf-8")
 
 
-def _sign_event(event: Mapping[str, Any]) -> str:
-    key = _ensure_key()
-    canonical = canonical_json(event)
-    return hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+def _sign_event(canonical: str) -> str:
+    """Sign the canonical JSON payload with Ed25519 and return the signature hex."""
+
+    signing_key = _ensure_key()
+    signed = signing_key.sign(canonical.encode("utf-8"))
+    return signed.signature.hex()
 
 
 def _ensure_index_schema() -> None:
@@ -162,7 +190,8 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
         "key_id": SIGNING_KEY_ID,
     }
 
-    signature = _sign_event(canonical_event)
+    canonical_str = canonical_json(canonical_event)
+    signature = _sign_event(canonical_str)
     ledger_entry = {**canonical_event, "signature": signature}
     offset = _append_to_ledger(ledger_entry)
     _append_to_index(offset, event_type, audited_state_hash, payload_hash, timestamp)

@@ -10,7 +10,7 @@ attempt counters, and soft-deletion semantics enforced via a hybrid property.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -28,11 +28,17 @@ from sqlalchemy.orm import declarative_base, relationship
 Base = declarative_base()
 
 
+def _utcnow() -> datetime:
+    """Return a timezone-aware timestamp for ORM defaults."""
+
+    return datetime.now(timezone.utc)
+
+
 class TimestampMixin:
     """Common timestamp fields shared across ORM models."""
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
 
 class SoftDeleteMixin:

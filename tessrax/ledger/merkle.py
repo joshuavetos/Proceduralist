@@ -143,6 +143,7 @@ def _entry_body(entry: Mapping[str, Any]) -> Mapping[str, Any]:
         "key_id",
         "signature",
         "previous_entry_hash",
+        "governance_freshness_tag",
     ]
     return {key: entry[key] for key in body_keys if key in entry}
 

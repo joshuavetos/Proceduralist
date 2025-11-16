@@ -1,0 +1,27 @@
+"""Auto-generates a lightweight SVG architecture diagram."""
+from __future__ import annotations
+
+from pathlib import Path
+
+SVG_TEMPLATE = """<svg xmlns='http://www.w3.org/2000/svg' width='640' height='320'>
+  <rect x='10' y='10' width='620' height='300' fill='#0b1f2a' stroke='#0ff' stroke-width='2'/>
+  <text x='320' y='40' fill='#0ff' font-size='20' text-anchor='middle'>Tessrax Architecture</text>
+  <rect x='40' y='70' width='160' height='80' fill='#102b3f' stroke='#0ff'/>
+  <text x='120' y='110' fill='#fff' font-size='12' text-anchor='middle'>Ledger</text>
+  <rect x='240' y='70' width='160' height='80' fill='#102b3f' stroke='#0ff'/>
+  <text x='320' y='110' fill='#fff' font-size='12' text-anchor='middle'>Governance</text>
+  <rect x='440' y='70' width='160' height='80' fill='#102b3f' stroke='#0ff'/>
+  <text x='520' y='110' fill='#fff' font-size='12' text-anchor='middle'>Diagnostics</text>
+  <line x1='200' y1='110' x2='240' y2='110' stroke='#0ff' stroke-width='2'/>
+  <line x1='400' y1='110' x2='440' y2='110' stroke='#0ff' stroke-width='2'/>
+  <text x='320' y='200' fill='#0ff' font-size='14' text-anchor='middle'>Merkle ↔ Ledger ↔ Index Alignment</text>
+</svg>"""
+
+
+def generate_diagram(output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(SVG_TEMPLATE, encoding="utf-8")
+    return output_path
+
+
+__all__ = ["generate_diagram"]

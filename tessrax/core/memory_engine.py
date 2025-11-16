@@ -16,10 +16,8 @@ import fcntl
 import hashlib
 import os
 import random
-import sqlite3
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -30,7 +28,12 @@ from tessrax.core.serialization import (
     canonical_payload_hash,
     snapshot_payload,
 )
+from tessrax.core.time import canonical_datetime
+from tessrax.core.typecheck import is_frozen_payload
 from tessrax.infra import key_registry
+from tessrax.governance.token_guard import GovernanceTokenGuard
+from tessrax.ledger.epochal import EpochLedgerManager
+from tessrax.ledger.index_backend import IndexEntry, LedgerIndexBackend
 from tessrax.ledger.merkle import MerkleAccumulator
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
@@ -54,6 +57,8 @@ class Receipt:
     previous_entry_hash: str | None
     entry_hash: str
     merkle_root: str
+    epoch_id: str
+    governance_freshness_tag: str
 
 
 def _load_active_key() -> tuple[str, SigningKey]:
@@ -61,45 +66,6 @@ def _load_active_key() -> tuple[str, SigningKey]:
 
     key_id, signing_key = key_registry.load_active_signing_key()
     return key_id, signing_key
-
-
-def _ensure_index_schema() -> None:
-    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(INDEX_PATH) as con:
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ledger_index (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ledger_offset INTEGER NOT NULL UNIQUE,
-                event_type TEXT NOT NULL,
-                state_hash TEXT NOT NULL,
-                payload_hash TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                merkle_root TEXT,
-                entry_hash TEXT,
-                previous_entry_hash TEXT,
-                UNIQUE(state_hash, payload_hash)
-            );
-            """
-        )
-        columns = {
-            row[1]
-            for row in con.execute("PRAGMA table_info(ledger_index)")
-        }
-        migrations = {
-            "merkle_root": "ALTER TABLE ledger_index ADD COLUMN merkle_root TEXT",
-            "entry_hash": "ALTER TABLE ledger_index ADD COLUMN entry_hash TEXT",
-            "previous_entry_hash": "ALTER TABLE ledger_index ADD COLUMN previous_entry_hash TEXT",
-        }
-        for column, statement in migrations.items():
-            if column not in columns:
-                con.execute(statement)
-        con.execute("CREATE INDEX IF NOT EXISTS idx_state_hash ON ledger_index(state_hash);")
-        con.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON ledger_index(timestamp);")
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_entry_hash ON ledger_index(entry_hash)"
-        )
-        con.commit()
 
 
 @contextmanager
@@ -138,46 +104,6 @@ def _append_to_ledger(entry: Mapping[str, Any]) -> int:
     return offset
 
 
-def _append_to_index(
-    offset: int,
-    event_type: str,
-    state_hash: str,
-    payload_hash: str,
-    timestamp: str,
-    *,
-    merkle_root: str,
-    entry_hash: str,
-    previous_entry_hash: str | None,
-) -> None:
-    with sqlite3.connect(INDEX_PATH) as con:
-        con.execute(
-            """
-            INSERT OR IGNORE INTO ledger_index (
-                ledger_offset,
-                event_type,
-                state_hash,
-                payload_hash,
-                timestamp,
-                merkle_root,
-                entry_hash,
-                previous_entry_hash
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                offset,
-                event_type,
-                state_hash,
-                payload_hash,
-                timestamp,
-                merkle_root,
-                entry_hash,
-                previous_entry_hash,
-            ),
-        )
-        con.commit()
-
-
 def _verify_inputs(event_type: str, payload: Mapping[str, Any], audited_state_hash: str) -> None:
     if not isinstance(event_type, str) or not event_type.strip():
         raise ValueError("event_type must be a non-empty string")
@@ -193,11 +119,21 @@ def _verify_inputs(event_type: str, payload: Mapping[str, Any], audited_state_ha
 
 def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_hash: str) -> Receipt:
     _verify_inputs(event_type, payload, audited_state_hash)
-    _ensure_index_schema()
+    index_backend = LedgerIndexBackend(index_path=INDEX_PATH)
+    index_backend.ensure_schema()
 
-    timestamp = datetime.now(tz=timezone.utc).isoformat()
+    timestamp = canonical_datetime()
     normalized_payload = snapshot_payload(payload)
+    if not is_frozen_payload(normalized_payload):  # pragma: no cover - defensive
+        raise TypeError("snapshot_payload must return FrozenPayload")
     payload_hash = canonical_payload_hash(normalized_payload)
+    token_guard = GovernanceTokenGuard(
+        state_path=MERKLE_STATE_PATH.with_name("governance_token_state.json")
+    )
+    merkle_accumulator = MerkleAccumulator(state_path=MERKLE_STATE_PATH)
+    freshness_tag = token_guard.validate(
+        ledger_counter=merkle_accumulator.state.entry_count
+    )
     key_id, signing_key = _load_active_key()
     canonical_event = {
         "event_type": event_type,
@@ -211,30 +147,42 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
 
     canonical_str = canonical_json(canonical_event)
     signature = signing_key.sign(canonical_str.encode("utf-8")).signature.hex()
-    merkle_accumulator = MerkleAccumulator(state_path=MERKLE_STATE_PATH)
     previous_entry_hash = merkle_accumulator.state.last_leaf_hash
     ledger_body = {
         **canonical_event,
         "signature": signature,
         "previous_entry_hash": previous_entry_hash,
+        "governance_freshness_tag": freshness_tag,
     }
     entry_hash = hashlib.sha256(canonical_json(ledger_body).encode("utf-8")).hexdigest()
     merkle_update = merkle_accumulator.prepare_update(entry_hash)
+    epoch_manager = EpochLedgerManager(
+        state_path=MERKLE_STATE_PATH.with_name("epoch_state.json"),
+        snapshot_dir=MERKLE_STATE_PATH.parent,
+    )
+    epoch_id = epoch_manager.record_entry(
+        entry_hash=entry_hash,
+        timestamp=timestamp,
+        merkle_state=merkle_update.new_state,
+    )
     ledger_entry = {
         **ledger_body,
         "entry_hash": entry_hash,
         "merkle_root": merkle_update.new_root,
+        "epoch_id": epoch_id,
     }
     offset = _append_to_ledger(ledger_entry)
-    _append_to_index(
-        offset,
-        event_type,
-        audited_state_hash,
-        payload_hash,
-        timestamp,
-        merkle_root=merkle_update.new_root,
-        entry_hash=entry_hash,
-        previous_entry_hash=previous_entry_hash,
+    index_backend.append(
+        IndexEntry(
+            ledger_offset=offset,
+            event_type=event_type,
+            state_hash=audited_state_hash,
+            payload_hash=payload_hash,
+            timestamp=timestamp,
+            merkle_root=merkle_update.new_root,
+            entry_hash=entry_hash,
+            previous_entry_hash=previous_entry_hash,
+        )
     )
     merkle_accumulator.commit(merkle_update)
 
@@ -249,6 +197,8 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
         previous_entry_hash=previous_entry_hash,
         entry_hash=entry_hash,
         merkle_root=merkle_update.new_root,
+        epoch_id=epoch_id,
+        governance_freshness_tag=freshness_tag,
     )
 
 

@@ -1,5 +1,11 @@
 # Proceduralist
 
+![Build](https://github.com/joshuavetos/Proceduralist/actions/workflows/tests.yml/badge.svg)
+![Coverage](https://img.shields.io/codecov/c/github/joshuavetos/Proceduralist)
+![Python](https://img.shields.io/badge/python-3.11+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+
 Proceduralist is a high‑assurance governance and verification engine designed for systems where determinism, traceability, and audit integrity must be guaranteed. It provides a unified framework for append‑only ledgering, policy‑driven decision making, verifiable state transitions, and cryptographically signed memory operations.
 
 This repository contains the reference implementation of the Proceduralist Engine.
@@ -52,10 +58,14 @@ End‑to‑end integrity checks:
 
 Requirements: **Python 3.11+**
 
+The repository is fully hermetic: simply install the pinned test toolchain and
+run the suite.
+
 ```bash
 git clone https://github.com/joshuavetos/Proceduralist.git
 cd Proceduralist
 pip install -r requirements.txt
+pytest -q
 ```
 
 ---
@@ -66,10 +76,10 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-Coverage:
+Coverage + XML report (used by the CI + Codecov workflow):
 
 ```bash
-pytest --cov=tessrax --cov-report=term-missing
+pytest --cov=tessrax --cov-report=term-missing --cov-report=xml
 ```
 
 ---

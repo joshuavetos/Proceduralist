@@ -92,8 +92,16 @@ def _validate_event_type(event_type: str, line_no: int) -> None:
 
 
 def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: int) -> None:
-    key_id = record.get("key_id")
-    if not isinstance(key_id, str):
+    include_key_id = "key_id" in record
+    key_id_value = record.get("key_id")
+
+    if include_key_id:
+        if not isinstance(key_id_value, str):
+            raise LedgerVerificationError(
+                f"key_id at line {line_no} must be a string"
+            )
+        key_id = key_id_value
+    else:
         if len(verify_keys) == 1:
             # Older ledgers emitted receipts without key identifiers because only
             # a single signing key existed.  Fall back to that lone key so that
@@ -109,16 +117,17 @@ def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: 
             f"Unknown key_id '{key_id}' at line {line_no}"
         )
 
-    message = _canonical_json(
-        {
-            "event_type": record["event_type"],
-            "timestamp": record["timestamp"],
-            "payload": record["payload"],
-            "payload_hash": record["payload_hash"],
-            "audited_state_hash": record["audited_state_hash"],
-            "key_id": key_id,
-        }
-    ).encode()
+    canonical_payload = {
+        "event_type": record["event_type"],
+        "timestamp": record["timestamp"],
+        "payload": record["payload"],
+        "payload_hash": record["payload_hash"],
+        "audited_state_hash": record["audited_state_hash"],
+    }
+    if include_key_id:
+        canonical_payload["key_id"] = key_id
+
+    message = _canonical_json(canonical_payload).encode()
 
     signature_hex = record.get("signature")
     if not isinstance(signature_hex, str):

@@ -41,7 +41,26 @@ class DiagnosticError(TessraxError):
         super().__init__(code="DIAG", message=message, details=details)
 
 
+class SnapshotError(TessraxError):
+    def __init__(self, message: str, *, details: Mapping[str, object] | None = None):
+        super().__init__(code="SNAPSHOT", message=message, details=details)
+
+
+class ReproducibilityError(TessraxError):
+    def __init__(self, message: str, *, details: Mapping[str, object] | None = None):
+        super().__init__(code="REPRO", message=message, details=details)
+
+
+def classify_failure(error: Exception) -> dict[str, object]:
+    if isinstance(error, TessraxError):
+        return {"code": error.code, "message": error.message, "details": error.details or {}}
+    return {"code": "GENERIC", "message": str(error), "details": {}}
+
+
 __all__ = [
+    "ReproducibilityError",
+    "SnapshotError",
+    "classify_failure",
     "DiagnosticError",
     "EpochError",
     "GovernanceTokenError",

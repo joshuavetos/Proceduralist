@@ -7,7 +7,9 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 from tessrax.core.time import canonical_datetime
-from tessrax.ledger.merkle import MerkleState
+from tessrax.ledger.merkle import MerkleState, compute_entry_hash
+
+AUDITOR_IDENTITY = "Tessrax Governance Kernel v16"
 
 
 @dataclass(slots=True)
@@ -21,6 +23,7 @@ def generate_stress_ledger(*, output_path: Path, entries: int = 10_000, seed: in
     rng = random.Random(seed)
     merkle = MerkleState.empty()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    previous_hash: str | None = None
     with output_path.open("w", encoding="utf-8") as handle:
         for idx in range(entries):
             payload = {"node": idx, "status": "VERIFIED" if idx % 2 == 0 else "LOGGED"}
@@ -34,10 +37,16 @@ def generate_stress_ledger(*, output_path: Path, entries: int = 10_000, seed: in
                 "payload_hash": payload_hash,
                 "audited_state_hash": f"{idx:064x}",
                 "signature": f"{rng.getrandbits(256):064x}",
-                "entry_hash": entry_hash,
-                "merkle_root": next_state.root(),
+                "previous_entry_hash": previous_hash,
+                "auditor": AUDITOR_IDENTITY,
+                "key_id": "stress-harness",
+                "governance_freshness_tag": f"stress-{idx}",
             }
+            entry_hash = compute_entry_hash(entry)
+            entry["entry_hash"] = entry_hash
+            entry["merkle_root"] = next_state.root()
             merkle = next_state
+            previous_hash = entry_hash
             handle.write(json.dumps(entry, sort_keys=True) + "\n")
     return StressHarnessResult(output_path=output_path, entries=entries, merkle_root=merkle.root())
 

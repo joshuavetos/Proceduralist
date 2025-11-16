@@ -5,3 +5,4 @@
 # Test + coverage dependencies used by the CI workflow.
 pytest>=8.0
 pytest-cov>=4.1
+ruff>=0.3

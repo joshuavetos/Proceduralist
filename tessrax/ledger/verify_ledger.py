@@ -269,3 +269,14 @@ def verify_ledger() -> bool:
 
 if __name__ == "__main__":
     verify_ledger()
+
+
+# Provide backwards compatibility for historical import paths.
+verify = verify_ledger
+
+__all__ = [
+    "LedgerRecord",
+    "LedgerVerificationError",
+    "verify_ledger",
+    "verify",
+]

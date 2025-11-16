@@ -254,3 +254,15 @@ def _main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - CLI utility
     _main()
+
+
+# Compatibility alias required by downstream tests and governance harnesses.
+verify_local_ledger = verify_local
+
+__all__ = [
+    "LedgerVerificationError",
+    "Receipt",
+    "emit_audit_receipt",
+    "verify_local",
+    "verify_local_ledger",
+]

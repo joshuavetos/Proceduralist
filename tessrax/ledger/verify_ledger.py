@@ -113,7 +113,15 @@ def _coerce_verify_key(raw: bytes) -> VerifyKey:
 def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: int) -> None:
     key_id = record.get("key_id")
     if not isinstance(key_id, str):
-        raise LedgerVerificationError(f"Missing key_id at line {line_no}")
+        if len(verify_keys) == 1:
+            # Older ledgers emitted receipts without key identifiers because only
+            # a single signing key existed.  Fall back to that lone key so that
+            # the verifier can still replay those ledgers.
+            key_id = next(iter(verify_keys))
+        else:
+            raise LedgerVerificationError(
+                f"Missing key_id at line {line_no} while multiple verification keys are configured"
+            )
 
     if key_id not in verify_keys:
         raise LedgerVerificationError(
@@ -176,7 +184,6 @@ def _read_ledger() -> List[LedgerRecord]:
                 "payload_hash",
                 "audited_state_hash",
                 "signature",
-                "key_id",
             ]
             for field in required_fields:
                 if field not in entry:

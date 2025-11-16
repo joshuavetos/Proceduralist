@@ -28,7 +28,7 @@ from nacl.signing import SigningKey
 from tessrax.core.serialization import (
     canonical_json,
     canonical_payload_hash,
-    normalize_payload,
+    snapshot_payload,
 )
 from tessrax.infra import key_registry
 from tessrax.ledger.merkle import MerkleAccumulator
@@ -196,7 +196,7 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
     _ensure_index_schema()
 
     timestamp = datetime.now(tz=timezone.utc).isoformat()
-    normalized_payload = normalize_payload(payload)
+    normalized_payload = snapshot_payload(payload)
     payload_hash = canonical_payload_hash(normalized_payload)
     key_id, signing_key = _load_active_key()
     canonical_event = {

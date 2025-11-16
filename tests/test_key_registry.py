@@ -16,6 +16,7 @@ def _sandbox_registry(tmp_path: Path):
     module.SIGNING_KEYS_DIR = signing_root
     module.ACTIVE_KEY_PATH = signing_root / "active_key.json"
     module.ROTATION_STATE_PATH = signing_root / "rotation_state.json"
+    module.ROTATION_RECEIPTS_PATH = signing_root / "rotation_receipts.json"
     module.LEGACY_PRIVATE_KEY_PATH = signing_root.parent / "signing_key.pem"
     module.LEGACY_PUBLIC_KEY_PATH = signing_root.parent / "signing_key.pub"
     return module

@@ -55,6 +55,7 @@ def _configure_environment(tmp_path: Path) -> dict:
     key_registry.SIGNING_KEYS_DIR = signing_keys_dir
     key_registry.ACTIVE_KEY_PATH = signing_keys_dir / "active_key.json"
     key_registry.ROTATION_STATE_PATH = signing_keys_dir / "rotation_state.json"
+    key_registry.ROTATION_RECEIPTS_PATH = signing_keys_dir / "rotation_receipts.json"
     key_registry.LEGACY_PRIVATE_KEY_PATH = legacy_priv
     key_registry.LEGACY_PUBLIC_KEY_PATH = legacy_pub
 

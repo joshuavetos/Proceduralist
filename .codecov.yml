@@ -1,0 +1,13 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 0.8
+        threshold: 0.02
+    patch:
+      default:
+        target: 0.8
+comment: false
+ignore:
+  - "docs"
+  - "tests"

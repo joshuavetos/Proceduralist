@@ -110,9 +110,9 @@ def _persist_material(key_id: str, signing_key: SigningKey) -> Tuple[Path, Path]
     return private_path, public_path
 
 
-def _require_governance(governance_token: str, force: bool) -> None:
+def _require_governance(governance_token: str) -> None:
     expected = os.getenv("TESSRAX_GOVERNANCE_TOKEN")
-    if expected and governance_token != expected and not force:
+    if expected and governance_token != expected:
         raise PermissionError("Governance token mismatch; rotation denied")
 
 
@@ -236,7 +236,7 @@ def rotate_key(
         raise ValueError("Governance token is required for rotation")
 
     state = _read_state()
-    _require_governance(governance_token, force)
+    _require_governance(governance_token)
 
     previous_key = state.get("active_key")
     key_id = new_key_id or os.getenv("TESSRAX_KEY_ID", "legacy")

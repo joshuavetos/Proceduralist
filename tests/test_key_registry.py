@@ -73,6 +73,9 @@ def test_governance_token_required(tmp_path: Path) -> None:
     with pytest.raises(PermissionError):
         registry.rotate_key(reason="bad-token", governance_token="wrong")
 
+    with pytest.raises(PermissionError):
+        registry.rotate_key(reason="forced-bad-token", governance_token="wrong", force=True)
+
     key_id, key = registry.load_active_signing_key()
     assert key_id == "delta"
     assert key.verify_key

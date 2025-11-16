@@ -1,63 +1,80 @@
 # Proceduralist
 
-Proceduralist is a hardened, self-auditing governance engine designed for environments where integrity, traceability, and deterministic behavior are non-negotiable. It provides a unified framework for append-only ledgering, policy-driven governance decisions, reproducible state verification, and cryptographically signed memory operations.
+Proceduralist is a high‑assurance governance and verification engine designed for systems where determinism, traceability, and audit integrity must be guaranteed. It provides a unified framework for append‑only ledgering, policy‑driven decision making, verifiable state transitions, and cryptographically signed memory operations.
 
-This repository represents the reference implementation of the Proceduralist Engine, built to power high-assurance systems, agent orchestration frameworks, and autonomous auditing pipelines.
+This repository contains the reference implementation of the Proceduralist Engine.
 
-## Features
+---
 
-### Ledger System
-- Merkle-verified append-only ledger (`ledger.jsonl`)
-- Immutable hash-chained entries
-- Deterministic serialization and hashing
-- Corruption detection and Merkle-state replay
-- Indexed database for fast lookup and historical inspection
+## Overview
 
-### Governance Kernel
-- Policy-driven evaluation
-- Quorum simulation
-- Version-pinned policies with rollback capability
-- Governance tokens with freshness validation
-- Verified decision receipts
+Proceduralist integrates four core components:
 
-### Memory Engine
-- Canonical serialization (deterministic JSON)
-- Immutable payload snapshots
-- Ed25519 signatures (PyNaCl or OpenSSL fallback)
-- State hashing for reproducible audits
-- Cold-start reproducibility guarantees
+### 1. Ledger System  
+A Merkle‑verified, append‑only ledger with:
 
-### Verification Pipeline
-- End-to-end reproducibility tests
-- Environment cold-boot verification
-- State divergence detection (index ↔ ledger ↔ merkle)
-- Structured exception model for predictable failure modes
+- hash‑chained entries  
+- canonical serialization  
+- corruption detection and recovery  
+- indexed historical lookup  
+- reproducible state replay  
+
+### 2. Governance Kernel  
+A policy‑driven decision engine featuring:
+
+- quorum simulation  
+- version‑pinned policies  
+- rollback capability  
+- governance token freshness checks  
+- deterministic decision receipts  
+
+### 3. Memory Engine  
+A signing and serialization layer providing:
+
+- canonical JSON normalization  
+- immutable payload snapshots  
+- Ed25519 signatures (PyNaCl or OpenSSL fallback)  
+- deterministic hashing  
+- reproducible cold‑start behavior  
+
+### 4. Verification Pipeline  
+End‑to‑end integrity checks:
+
+- environment cold‑boot verification  
+- state divergence detection  
+- exception consistency rules  
+- reproducibility tests  
+- strict serialization guarantees  
+
+---
 
 ## Installation
 
-Proceduralist requires Python 3.11+.
+Requirements: **Python 3.11+**
 
-```
+```bash
 git clone https://github.com/joshuavetos/Proceduralist.git
 cd Proceduralist
 pip install -r requirements.txt
 ```
 
+---
+
 ## Running Tests
 
-Proceduralist includes a comprehensive test suite covering the serialization engine, Merkle accumulator, memory engine, key-management subsystem, and governance kernel.
-
-```
+```bash
 pytest -q
 ```
 
-To run coverage:
+Coverage:
 
-```
+```bash
 pytest --cov=tessrax --cov-report=term-missing
 ```
 
-## Project Layout
+---
+
+## Project Structure
 
 ```
 tessrax/
@@ -65,43 +82,63 @@ tessrax/
     memory_engine.py
     governance_kernel.py
     serialization.py
+  infra/
+    key_registry.py
   ledger/
     ledger.jsonl
     index.db
     merkle_state.json
-  infra/
-    key_registry.py
 tests/
 docs/
 ```
 
-## Roadmap
+---
 
-A complete roadmap is maintained at `docs/ROADMAP.md` and includes planned improvements to:
-- Ledger compaction and snapshotting
-- Multi-signature governance
-- Sharded ledger segments and concurrency improvements
-- CLI tools for inspection and debugging
-- Advanced validation and policy engines
-- Rust-backed hashing options
-- Visualization tools
+## Documentation
 
-## Philosophy
+Extended documentation and architectural references are in:
 
-Proceduralist is built on four principles:
+- `docs/ROADMAP.md`
+- `docs/architecture.svg`
+- `tessrax/core/` inline module documentation
 
-1. **Determinism**  
-   Every component must behave identically across environments and cold starts.
+---
 
-2. **Auditability**  
-   All outputs must be verifiable, reproducible, and permanently traceable.
+## Roadmap Summary
 
-3. **Integrity**  
-   No hidden state, no mutable history, no ambiguity in serialization or hashing.
+Future enhancements include:
 
-4. **Governance as Code**  
-   Decisions must be governed by explicit, inspectable policy rather than implicit behavior.
+- ledger snapshot formats  
+- multi‑signature governance  
+- sharded ledger and parallel replay  
+- deterministic hash pipelines (BLAKE3 optional)  
+- visualization and inspection tooling  
+- Rust‑backed hashing module  
+- expanded test matrices  
+
+Full roadmap is maintained in `docs/ROADMAP.md`.
+
+---
+
+## Design Principles
+
+Proceduralist is built around four principles:
+
+### Determinism  
+Identical results across environments, cold starts, and machines.
+
+### Auditability  
+All outputs must be verifiable, reproducible, and permanently traceable.
+
+### Integrity  
+No hidden state, no silent mutation, no ambiguous serialization.
+
+### Governance as Code  
+All decisions governed by explicit, inspectable, versioned policy.
+
+---
 
 ## License
 
-MIT License. See `LICENSE` for details.
+Proceduralist is released under the MIT License.  
+See `LICENSE` for details.

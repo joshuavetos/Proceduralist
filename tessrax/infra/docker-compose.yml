@@ -1,0 +1,94 @@
+version: "3.9"
+
+x-python-service: &python-service
+  image: python:3.11-slim
+  working_dir: /app
+  volumes:
+    - ../:/app
+  env_file:
+    - ../.env
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tessrax}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-tessrax_state}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tessrax} -d ${POSTGRES_DB:-tessrax_state} -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  crawler-worker:
+    <<: *python-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "pip install --no-cache-dir redis rq requests sqlalchemy psycopg2-binary pynacl &&
+      python -m tessrax.crawler.agent"
+
+  orchestrator:
+    <<: *python-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "pip install --no-cache-dir redis rq requests sqlalchemy psycopg2-binary pynacl &&
+      python -m tessrax.orchestrator.system_orchestrator"
+
+  dashboard:
+    <<: *python-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+    command: >
+      /bin/sh -c "pip install --no-cache-dir streamlit sqlalchemy psycopg2-binary &&
+      streamlit run tessrax/dashboard/app.py --server.port=8501 --server.address=0.0.0.0"
+
+  proceduralist-api:
+    <<: *python-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: >
+      /bin/sh -c "pip install --no-cache-dir fastapi uvicorn[standard] sqlalchemy psycopg2-binary &&
+      uvicorn tessrax.services.proceduralist.api.endpoints:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -14,13 +14,15 @@ import sqlite3
 from pathlib import Path
 from typing import Generator, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, FastAPI
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from services.proceduralist.database.models import ActionEdge, StateNode
+from tessrax.services.proceduralist.database.models import ActionEdge, StateNode
 
 router = APIRouter()
+app = FastAPI(title="Tessrax Proceduralist API", version="1.0.0")
+app.include_router(router)
 
 LEDGER_INDEX_PATH = Path("tessrax/ledger/index.db")
 

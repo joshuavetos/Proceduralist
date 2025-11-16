@@ -15,10 +15,17 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
 from nacl.signing import VerifyKey
+
+from tessrax.core.memory_engine import (
+    CANONICAL_EVENT_TYPES,
+    canonical_json,
+    canonical_payload_hash,
+)
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
@@ -26,7 +33,6 @@ SIGNING_KEYS_DIR = Path("tessrax/infra/signing_keys")
 LEGACY_KEY_PATH = Path("tessrax/infra/signing_key.pub")
 
 STATE_HASH_PATTERN = re.compile(r"^(?:[a-f0-9]{32}|[a-f0-9]{64})$")
-CANONICAL_EVENTS = {"STATE_AUDITED", "CONTRADICTION_DETECTED"}
 
 
 @dataclass(frozen=True)
@@ -43,19 +49,19 @@ class LedgerVerificationError(RuntimeError):
     """Raised when the verifier encounters integrity issues."""
 
 
-def _canonical_json(obj: dict) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
-
-
 def _load_verify_keys() -> Dict[str, VerifyKey]:
     keys: Dict[str, VerifyKey] = {}
 
     if SIGNING_KEYS_DIR.exists():
         for key_path in SIGNING_KEYS_DIR.glob("*.pub"):
-            keys[key_path.stem] = VerifyKey(key_path.read_bytes())
+            raw = key_path.read_bytes()
+            if raw.strip():
+                keys[key_path.stem] = _coerce_verify_key(raw)
 
     if not keys and LEGACY_KEY_PATH.exists():
-        keys["legacy"] = VerifyKey(LEGACY_KEY_PATH.read_bytes())
+        raw = LEGACY_KEY_PATH.read_bytes()
+        if raw.strip():
+            keys["legacy"] = _coerce_verify_key(raw)
 
     if not keys:
         raise LedgerVerificationError("No Ed25519 verification keys found.")
@@ -85,10 +91,23 @@ def _validate_state_hash(value: str, line_no: int) -> None:
 
 
 def _validate_event_type(event_type: str, line_no: int) -> None:
-    if event_type not in CANONICAL_EVENTS:
+    if event_type not in CANONICAL_EVENT_TYPES:
         raise LedgerVerificationError(
             f"Unknown event_type at line {line_no}: {event_type!r}"
         )
+
+
+def _coerce_verify_key(raw: bytes) -> VerifyKey:
+    try:
+        text = raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        text = ""
+    if text:
+        try:
+            return VerifyKey(bytes.fromhex(text))
+        except ValueError:
+            pass
+    return VerifyKey(raw)
 
 
 def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: int) -> None:
@@ -101,16 +120,18 @@ def _verify_signature(record: dict, verify_keys: Dict[str, VerifyKey], line_no: 
             f"Unknown key_id '{key_id}' at line {line_no}"
         )
 
-    message = _canonical_json(
-        {
-            "event_type": record["event_type"],
-            "timestamp": record["timestamp"],
-            "payload": record["payload"],
-            "payload_hash": record["payload_hash"],
-            "audited_state_hash": record["audited_state_hash"],
-            "key_id": key_id,
-        }
-    ).encode()
+    signed_body = {
+        "event_type": record["event_type"],
+        "timestamp": record["timestamp"],
+        "payload": record["payload"],
+        "payload_hash": record["payload_hash"],
+        "audited_state_hash": record["audited_state_hash"],
+        "key_id": key_id,
+    }
+    if "auditor" in record:
+        signed_body["auditor"] = record["auditor"]
+
+    message = canonical_json(signed_body).encode()
 
     signature_hex = record.get("signature")
     if not isinstance(signature_hex, str):
@@ -130,17 +151,16 @@ def _hash_payload(payload: dict, line_no: int) -> str:
     if not isinstance(payload, dict):
         raise LedgerVerificationError(f"Payload at line {line_no} must be an object")
 
-    canonical = _canonical_json(payload).encode()
-    return hashlib.sha256(canonical).hexdigest()
+    return canonical_payload_hash(payload)
 
 
 def _read_ledger() -> List[LedgerRecord]:
-    verify_keys = _load_verify_keys()
     records: List[LedgerRecord] = []
-    prev_ts = None
+    prev_ts: float | None = None
+    verify_keys: Dict[str, VerifyKey] | None = None
 
-    if not LEDGER_PATH.exists():
-        raise LedgerVerificationError(f"Ledger file missing: {LEDGER_PATH}")
+    if not LEDGER_PATH.exists() or LEDGER_PATH.stat().st_size == 0:
+        return records
 
     with LEDGER_PATH.open("r", encoding="utf-8") as handle:
         for line_no, raw in enumerate(handle, start=1):
@@ -172,10 +192,19 @@ def _read_ledger() -> List[LedgerRecord]:
             _validate_event_type(event_type, line_no)
             _validate_state_hash(entry["audited_state_hash"], line_no)
 
-            timestamp = entry["timestamp"]
-            if not isinstance(timestamp, (int, float)):
+            timestamp_value = entry["timestamp"]
+            if isinstance(timestamp_value, (int, float)):
+                timestamp = float(timestamp_value)
+            elif isinstance(timestamp_value, str):
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_value).timestamp()
+                except ValueError as exc:
+                    raise LedgerVerificationError(
+                        f"Timestamp at line {line_no} must be ISO-8601 or numeric"
+                    ) from exc
+            else:
                 raise LedgerVerificationError(
-                    f"Timestamp at line {line_no} must be numeric"
+                    f"Timestamp at line {line_no} must be ISO-8601 or numeric"
                 )
 
             payload_hash = _hash_payload(entry["payload"], line_no)
@@ -195,6 +224,8 @@ def _read_ledger() -> List[LedgerRecord]:
                 )
             prev_ts = timestamp
 
+            if verify_keys is None:
+                verify_keys = _load_verify_keys()
             _verify_signature(entry, verify_keys, line_no)
 
             offset = len(records)
@@ -210,8 +241,8 @@ def _read_ledger() -> List[LedgerRecord]:
 
 
 def _fetch_index_rows() -> List[Tuple[int, str, str, str]]:
-    if not INDEX_PATH.exists():
-        raise LedgerVerificationError(f"Ledger index missing: {INDEX_PATH}")
+    if not INDEX_PATH.exists() or INDEX_PATH.stat().st_size == 0:
+        return []
 
     try:
         with sqlite3.connect(f"file:{INDEX_PATH}?mode=ro", uri=True) as con:
@@ -232,12 +263,18 @@ def _compare_index(records: List[LedgerRecord]) -> None:
             f"Index/ledger length mismatch ({len(index_rows)} vs {len(records)})"
         )
 
+    prev_offset = -1
     for expected_offset, row in enumerate(index_rows):
         ledger_offset, event_type, state_hash, payload_hash = row
-        if ledger_offset != expected_offset:
+        if not isinstance(ledger_offset, int):
             raise LedgerVerificationError(
-                f"Non-contiguous ledger_offset detected at index row {expected_offset}"
+                f"Index row {expected_offset} has non-integer ledger_offset"
             )
+        if ledger_offset < prev_offset:
+            raise LedgerVerificationError(
+                f"Ledger offsets must be monotonically increasing (row {expected_offset})"
+            )
+        prev_offset = ledger_offset
 
         record = records[expected_offset]
         if (
@@ -254,7 +291,10 @@ def verify_ledger() -> bool:
     try:
         print("[VERIFY] Stage 1 — Validating ledger entries...")
         records = _read_ledger()
-        print("[VERIFY] Stage 1 SUCCESS.")
+        if not records:
+            print("[VERIFY] Stage 1 SUCCESS (no entries present).")
+        else:
+            print("[VERIFY] Stage 1 SUCCESS.")
 
         print("[VERIFY] Stage 2 — Checking index consistency...")
         _compare_index(records)

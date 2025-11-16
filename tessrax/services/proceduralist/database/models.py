@@ -70,13 +70,13 @@ class StateNode(TimestampMixin, SoftDeleteMixin, Base):
         "ActionEdge",
         back_populates="from_node",
         foreign_keys="ActionEdge.from_node_id",
-        cascade="all, delete-orphan",
+        cascade="all",
     )
     incoming_edges = relationship(
         "ActionEdge",
         back_populates="to_node",
         foreign_keys="ActionEdge.to_node_id",
-        cascade="all, delete-orphan",
+        cascade="all",
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper

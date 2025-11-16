@@ -117,8 +117,17 @@ def _record_governance_event(decision) -> None:
             f"[CORE] GovernanceDecision missing state_hash (node_id={decision.node_id})"
         )
 
+    decision_type = decision.decision
+    if decision_type == "VERIFIED":
+        event_type = "STATE_AUDITED"
+    elif decision_type in {"LOGGED", "ESCALATE", "DEFER"}:
+        event_type = "CONTRADICTION_DETECTED"
+    else:
+        raise ValueError(f"Unsupported governance decision type: {decision_type}")
+
     payload = {
-        "decision": decision.decision,
+        "event_type": event_type,
+        "decision": decision_type,
         "severity": decision.severity,
         "policy_code": decision.policy_code,
         "rationale": decision.rationale.summary,
@@ -132,7 +141,7 @@ def _record_governance_event(decision) -> None:
         "confidence": decision.confidence,
     }
     payload["integrity_hash"] = _integrity_digest(payload)
-    write_receipt(event_type=decision.decision, payload=payload, audited_state_hash=decision.state_hash)
+    write_receipt(event_type=event_type, payload=payload, audited_state_hash=decision.state_hash)
 
 
 def _dead_letter(db: Session, node: StateNode, error_msg: str) -> None:

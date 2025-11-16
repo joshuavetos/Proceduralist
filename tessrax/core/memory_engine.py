@@ -25,7 +25,11 @@ from typing import Any, Mapping
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
 SIGNING_KEY_PATH = Path("tessrax/infra/signing_key.pem")
+SIGNING_KEYS_DIR = Path("tessrax/infra/signing_keys")
+LEGACY_PUBLIC_KEY_PATH = Path("tessrax/infra/signing_key.pub")
+SIGNING_KEY_ID = os.getenv("TESSRAX_KEY_ID", "legacy")
 AUDITOR_IDENTITY = "Tessrax Governance Kernel v16"
+CANONICAL_EVENT_TYPES: tuple[str, ...] = ("STATE_AUDITED", "CONTRADICTION_DETECTED")
 
 
 @dataclass(slots=True)
@@ -41,12 +45,16 @@ class Receipt:
     ledger_offset: int
 
 
-def _canonical_json(payload: Mapping[str, Any]) -> str:
+def canonical_json(payload: Mapping[str, Any]) -> str:
+    """Return deterministic JSON used for hashing/signing (sort_keys=True)."""
+
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-def _payload_hash(payload: Mapping[str, Any]) -> str:
-    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
+    """Compute the canonical SHA-256 digest for ``payload``."""
+
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
 def _ensure_key() -> bytes:
@@ -57,12 +65,24 @@ def _ensure_key() -> bytes:
     key = SIGNING_KEY_PATH.read_bytes()
     if len(key) < 32:
         raise RuntimeError("Signing key is invalid; ensure at least 32 bytes of entropy.")
-    return key[:64]
+    key = key[:64]
+    _sync_public_material(key)
+    return key
+
+
+def _sync_public_material(key: bytes) -> None:
+    """Mirror the signing key into verifier locations (legacy + key-id specific)."""
+
+    SIGNING_KEYS_DIR.mkdir(parents=True, exist_ok=True)
+    LEGACY_PUBLIC_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    key_hex = key.hex() + "\n"
+    (SIGNING_KEYS_DIR / f"{SIGNING_KEY_ID}.pub").write_text(key_hex, encoding="utf-8")
+    LEGACY_PUBLIC_KEY_PATH.write_text(key_hex, encoding="utf-8")
 
 
 def _sign_event(event: Mapping[str, Any]) -> str:
     key = _ensure_key()
-    canonical = _canonical_json(event)
+    canonical = canonical_json(event)
     return hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -89,7 +109,7 @@ def _ensure_index_schema() -> None:
 
 def _append_to_ledger(entry: Mapping[str, Any]) -> int:
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    serialized = _canonical_json(entry) + "\n"
+    serialized = canonical_json(entry) + "\n"
     with open(LEDGER_PATH, "a+", encoding="utf-8") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         handle.seek(0, os.SEEK_END)
@@ -116,6 +136,10 @@ def _append_to_index(offset: int, event_type: str, state_hash: str, payload_hash
 def _verify_inputs(event_type: str, payload: Mapping[str, Any], audited_state_hash: str) -> None:
     if not isinstance(event_type, str) or not event_type.strip():
         raise ValueError("event_type must be a non-empty string")
+    if event_type not in CANONICAL_EVENT_TYPES:
+        raise ValueError(
+            f"event_type must be one of {CANONICAL_EVENT_TYPES}, received {event_type!r}"
+        )
     if not isinstance(payload, Mapping):
         raise TypeError("payload must be a mapping")
     if not isinstance(audited_state_hash, str) or len(audited_state_hash) < 8:
@@ -127,7 +151,7 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
     _ensure_index_schema()
 
     timestamp = datetime.now(tz=timezone.utc).isoformat()
-    payload_hash = _payload_hash(payload)
+    payload_hash = canonical_payload_hash(payload)
     canonical_event = {
         "event_type": event_type,
         "timestamp": timestamp,
@@ -135,6 +159,7 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
         "payload_hash": payload_hash,
         "audited_state_hash": audited_state_hash,
         "auditor": AUDITOR_IDENTITY,
+        "key_id": SIGNING_KEY_ID,
     }
 
     signature = _sign_event(canonical_event)
@@ -153,4 +178,10 @@ def write_receipt(event_type: str, payload: Mapping[str, Any], audited_state_has
     )
 
 
-__all__ = ["Receipt", "write_receipt"]
+__all__ = [
+    "Receipt",
+    "write_receipt",
+    "canonical_json",
+    "canonical_payload_hash",
+    "CANONICAL_EVENT_TYPES",
+]

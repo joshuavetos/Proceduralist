@@ -20,6 +20,12 @@ from typing import Dict, Iterable, List
 
 from nacl.signing import VerifyKey
 
+from tessrax.core.memory_engine import (
+    CANONICAL_EVENT_TYPES,
+    canonical_json,
+    canonical_payload_hash,
+)
+
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
 SIGNING_KEYS_DIR = Path("tessrax/infra/signing_keys")
@@ -41,12 +47,6 @@ class Receipt:
     payload_hash: str
     audited_state_hash: str
     signature: str
-
-
-def _canonical_json(obj: dict) -> str:
-    """Return deterministic JSON used for hashing/signing (sort_keys=True)."""
-
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _load_public_keys() -> Dict[str, VerifyKey]:
@@ -85,8 +85,7 @@ def _coerce_verify_key(raw: bytes) -> VerifyKey:
 def _hash_payload(payload: dict, line_no: int) -> str:
     if not isinstance(payload, dict):
         raise LedgerVerificationError(f"Ledger line {line_no}: payload must be an object")
-    canonical = _canonical_json(payload).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
+    return canonical_payload_hash(payload)
 
 
 def _verify_signature(entry: dict, verify_keys: Dict[str, VerifyKey], line_no: int) -> None:
@@ -112,8 +111,10 @@ def _verify_signature(entry: dict, verify_keys: Dict[str, VerifyKey], line_no: i
     }
     if key_id:
         signed_body["key_id"] = key_id
+    if "auditor" in entry:
+        signed_body["auditor"] = entry["auditor"]
 
-    message = _canonical_json(signed_body).encode("utf-8")
+    message = canonical_json(signed_body).encode("utf-8")
 
     signature_hex = entry["signature"]
     if not isinstance(signature_hex, str):
@@ -157,6 +158,11 @@ def _read_receipts() -> List[Receipt]:
             payload_hash = _hash_payload(entry["payload"], line_no)
             if payload_hash != entry["payload_hash"]:
                 raise LedgerVerificationError(f"Ledger line {line_no}: payload hash mismatch")
+
+            if entry["event_type"] not in CANONICAL_EVENT_TYPES:
+                raise LedgerVerificationError(
+                    f"Ledger line {line_no}: invalid event_type {entry['event_type']!r}"
+                )
 
             _verify_signature(entry, verify_keys, line_no)
 
@@ -225,7 +231,7 @@ def emit_audit_receipt(status: str, runtime_info: dict, integrity_score: float) 
         "integrity_score": round(float(integrity_score), 3),
         "clauses": ["AEP-001", "POST-AUDIT-001", "RVC-001", "EAC-001"],
     }
-    canonical = _canonical_json(payload)
+    canonical = canonical_json(payload)
     payload["signature"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return payload
 

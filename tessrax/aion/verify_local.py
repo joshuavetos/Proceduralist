@@ -21,16 +21,15 @@ from typing import Dict, Iterable, List
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
-from tessrax.core.memory_engine import (
-    CANONICAL_EVENT_TYPES,
-    canonical_json,
-    canonical_payload_hash,
-)
+from tessrax.core.memory_engine import CANONICAL_EVENT_TYPES
+from tessrax.core.serialization import canonical_json, canonical_payload_hash
+from tessrax.ledger.merkle import MERKLE_STATE_PATH, MerkleAccumulator, MerkleState, compute_entry_hash
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 INDEX_PATH = Path("tessrax/ledger/index.db")
 SIGNING_KEYS_DIR = Path("tessrax/infra/signing_keys")
 LEGACY_KEY_PATH = Path("tessrax/infra/signing_key.pub")
+LOCAL_MERKLE_STATE_PATH = MERKLE_STATE_PATH
 AUDITOR_IDENTITY = "Tessrax Governance Kernel v16"
 
 
@@ -48,6 +47,9 @@ class Receipt:
     payload_hash: str
     audited_state_hash: str
     signature: str
+    entry_hash: str
+    merkle_root: str
+    previous_entry_hash: str | None
 
 
 def _load_public_keys() -> Dict[str, VerifyKey]:
@@ -138,6 +140,8 @@ def _read_receipts() -> List[Receipt]:
 
     verify_keys = _load_public_keys()
     receipts: List[Receipt] = []
+    merkle_state = MerkleState.empty()
+    prev_entry_hash: str | None = None
 
     with LEDGER_PATH.open("r", encoding="utf-8") as ledger_file:
         for line_no, raw in enumerate(ledger_file, start=1):
@@ -157,9 +161,15 @@ def _read_receipts() -> List[Receipt]:
                 "audited_state_hash",
                 "signature",
             ]
+            merkle_fields = ["entry_hash", "merkle_root"]
             for field in required:
                 if field not in entry:
                     raise LedgerVerificationError(f"Ledger line {line_no}: missing field '{field}'")
+            for field in merkle_fields:
+                if field not in entry:
+                    raise LedgerVerificationError(
+                        f"Ledger line {line_no}: missing field '{field}'"
+                    )
 
             payload_hash = _hash_payload(entry["payload"], line_no)
             if payload_hash != entry["payload_hash"]:
@@ -172,6 +182,28 @@ def _read_receipts() -> List[Receipt]:
 
             _verify_signature(entry, verify_keys, line_no)
 
+            entry_hash = entry["entry_hash"]
+            if not isinstance(entry_hash, str):
+                raise LedgerVerificationError(
+                    f"Ledger line {line_no}: entry_hash must be a string"
+                )
+            computed_entry_hash = compute_entry_hash(entry)
+            if computed_entry_hash != entry_hash:
+                raise LedgerVerificationError(
+                    f"Ledger line {line_no}: entry_hash mismatch"
+                )
+            if entry.get("previous_entry_hash") != prev_entry_hash:
+                raise LedgerVerificationError(
+                    f"Ledger line {line_no}: previous_entry_hash mismatch"
+                )
+            merkle_state = merkle_state.apply_leaf(entry_hash)
+            merkle_root = entry["merkle_root"]
+            if merkle_root != merkle_state.root():
+                raise LedgerVerificationError(
+                    f"Ledger line {line_no}: merkle_root mismatch"
+                )
+            prev_entry_hash = entry_hash
+
             receipts.append(
                 Receipt(
                     event_type=entry["event_type"],
@@ -180,20 +212,25 @@ def _read_receipts() -> List[Receipt]:
                     payload_hash=payload_hash,
                     audited_state_hash=entry["audited_state_hash"],
                     signature=entry["signature"],
+                    entry_hash=entry_hash,
+                    merkle_root=merkle_root,
+                    previous_entry_hash=entry.get("previous_entry_hash"),
                 )
             )
     if not receipts:
         raise LedgerVerificationError("Ledger contains no receipts to verify")
+    _verify_merkle_state(merkle_state)
     return receipts
 
 
-def _fetch_index_rows() -> Iterable[tuple[int, str, str]]:
+def _fetch_index_rows() -> Iterable[tuple[int, str, str, str | None, str, str | None]]:
     if not INDEX_PATH.exists():
         raise LedgerVerificationError(f"Ledger index missing at {INDEX_PATH}")
     try:
         with sqlite3.connect(f"file:{INDEX_PATH}?mode=ro", uri=True) as con:
             cursor = con.execute(
-                "SELECT event_type, state_hash, payload_hash FROM ledger_index ORDER BY ledger_offset"
+                "SELECT event_type, state_hash, payload_hash, merkle_root, entry_hash, previous_entry_hash "
+                "FROM ledger_index ORDER BY ledger_offset"
             )
             return list(cursor.fetchall())
     except sqlite3.Error as exc:  # pragma: no cover - corruption path
@@ -206,14 +243,25 @@ def _compare_with_index(receipts: List[Receipt]) -> None:
         raise LedgerVerificationError(
             f"Ledger/index length mismatch ({len(receipts)} vs {len(rows)})"
         )
-    for idx, (event_type, state_hash, payload_hash) in enumerate(rows):
+    for idx, (event_type, state_hash, payload_hash, merkle_root, entry_hash, previous_entry_hash) in enumerate(rows):
         receipt = receipts[idx]
         if (
             receipt.event_type != event_type
             or receipt.audited_state_hash != state_hash
             or receipt.payload_hash != payload_hash
+            or receipt.entry_hash != entry_hash
+            or receipt.merkle_root != merkle_root
+            or (receipt.previous_entry_hash or None) != previous_entry_hash
         ):
             raise LedgerVerificationError(f"Ledger/index mismatch at offset {idx}")
+
+
+def _verify_merkle_state(observed: MerkleState) -> None:
+    accumulator = MerkleAccumulator(state_path=LOCAL_MERKLE_STATE_PATH)
+    if accumulator.state.entry_count != observed.entry_count:
+        raise LedgerVerificationError("Merkle entry count mismatch")
+    if accumulator.state.root() != observed.root():
+        raise LedgerVerificationError("Merkle root mismatch")
 
 
 def verify_local(limit: int | None = None) -> List[Receipt]:

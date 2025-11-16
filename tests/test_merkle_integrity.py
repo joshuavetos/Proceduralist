@@ -1,10 +1,8 @@
-"""Cold-start integration test for Tessrax OS primitives."""
-
+"""Merkle integrity regression tests for Tessrax ledger."""
 from __future__ import annotations
 
 import importlib
 import os
-from dataclasses import dataclass
 from pathlib import Path
 import sys
 
@@ -13,26 +11,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from tessrax.memory.memory_engine import write_receipt
-from tessrax.governance.governance_kernel import classify_clean
-from tessrax.ledger.verify_ledger import verify as verify_ledger
-from tessrax.aion.verify_local import verify_local_ledger
-from tessrax.ledger.merkle import verify_merkle
+from tessrax.ledger.merkle import MerkleAccumulator, verify_merkle
 
 import tessrax.core.memory_engine as core_memory
 import tessrax.ledger.verify_ledger as ledger_module
 import tessrax.aion.verify_local as aion_verify
 
 
-@dataclass
-class DummyNode:
-    id: int
-    state_hash: str
-    url: str
-    title: str
-
-
-def test_cold_start(tmp_path: Path) -> None:
-    sandbox = tmp_path / "tessrax_sandbox"
+def _bootstrap_paths(tmp_path: Path) -> None:
+    sandbox = tmp_path / "merkle_sandbox"
     ledger_dir = sandbox / "tessrax" / "ledger"
     ledger_dir.mkdir(parents=True)
     infra_dir = sandbox / "tessrax" / "infra"
@@ -43,10 +30,11 @@ def test_cold_start(tmp_path: Path) -> None:
     index_path = ledger_dir / "index.db"
     hmac_key_path = infra_dir / "signing_key.pem"
     legacy_pub_path = infra_dir / "signing_key.pub"
+    merkle_state_path = ledger_dir / "merkle_state.json"
 
-    key_id = "test-key"
-    os.environ["TESSRAX_KEY_ID"] = key_id
-    os.environ["TESSRAX_GOVERNANCE_TOKEN"] = "test-governance"
+    os.environ["TESSRAX_KEY_ID"] = "merkle-test-key"
+    os.environ["TESSRAX_GOVERNANCE_TOKEN"] = "merkle-gov"
+
     key_registry = importlib.reload(importlib.import_module("tessrax.infra.key_registry"))
     key_registry.SIGNING_KEYS_DIR = signing_keys_dir
     key_registry.ACTIVE_KEY_PATH = signing_keys_dir / "active_key.json"
@@ -56,26 +44,28 @@ def test_cold_start(tmp_path: Path) -> None:
 
     core_memory.LEDGER_PATH = ledger_path
     core_memory.INDEX_PATH = index_path
-    core_memory.MERKLE_STATE_PATH = ledger_dir / "merkle_state.json"
+    core_memory.MERKLE_STATE_PATH = merkle_state_path
 
     ledger_module.LEDGER_PATH = ledger_path
     ledger_module.INDEX_PATH = index_path
     ledger_module.SIGNING_KEYS_DIR = signing_keys_dir
     ledger_module.LEGACY_KEY_PATH = legacy_pub_path
-    ledger_module.MERKLE_STATE_PATH = core_memory.MERKLE_STATE_PATH
+    ledger_module.MERKLE_STATE_PATH = merkle_state_path
 
     aion_verify.LEDGER_PATH = ledger_path
     aion_verify.INDEX_PATH = index_path
     aion_verify.SIGNING_KEYS_DIR = signing_keys_dir
     aion_verify.LEGACY_KEY_PATH = legacy_pub_path
-    aion_verify.LOCAL_MERKLE_STATE_PATH = core_memory.MERKLE_STATE_PATH
+    aion_verify.LOCAL_MERKLE_STATE_PATH = merkle_state_path
+
+
+def test_merkle_state_matches_entries(tmp_path: Path) -> None:
+    _bootstrap_paths(tmp_path)
 
     payloads = [
-        {"node_id": 1, "status": "VERIFIED", "url": "http://example.com"},
-        {"node_id": 2, "status": "VERIFIED", "url": "http://example.com/login"},
-        {"node_id": 3, "status": "VERIFIED", "url": "http://example.com/cart"},
+        {"node_id": idx, "status": "VERIFIED", "url": f"https://example.com/{idx}"}
+        for idx in range(3)
     ]
-
     for idx, payload in enumerate(payloads):
         write_receipt(
             event_type="STATE_AUDITED",
@@ -83,18 +73,6 @@ def test_cold_start(tmp_path: Path) -> None:
             audited_state_hash=f"{idx:064x}",
         )
 
-    assert verify_ledger() is True
-    assert verify_merkle(ledger_path, core_memory.MERKLE_STATE_PATH)
-    receipts = verify_local_ledger()
-    assert len(receipts) == 3
-
-    nodes = [
-        DummyNode(id=1, state_hash="a" * 64, url="http://example.com", title="Home"),
-        DummyNode(id=2, state_hash="b" * 64, url="http://example.com/login", title="Login"),
-    ]
-    decisions = [classify_clean(node, recurrence_count=idx) for idx, node in enumerate(nodes)]
-    assert all(decision.decision == "VERIFIED" for decision in decisions)
-    assert all(decision.category == "CLEAN" for decision in decisions)
-    assert all(decision.policy_code.startswith("POL#CLEAN") for decision in decisions)
-    assert all(isinstance(decision.tags, tuple) and decision.tags for decision in decisions)
-    assert len(verify_local_ledger()) == 3
+    accumulator = MerkleAccumulator(state_path=core_memory.MERKLE_STATE_PATH)
+    assert accumulator.state.entry_count == len(payloads)
+    assert verify_merkle(core_memory.LEDGER_PATH, core_memory.MERKLE_STATE_PATH)

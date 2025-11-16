@@ -27,6 +27,14 @@ def test_truth_lock_alignment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setenv("TESSRAX_DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("TESSRAX_KEY_ID", "truth-lock")
+    monkeypatch.setenv("TESSRAX_GOVERNANCE_TOKEN", "truth-lock-governance")
+
+    key_registry = importlib.reload(importlib.import_module("tessrax.infra.key_registry"))
+    key_registry.SIGNING_KEYS_DIR = signing_keys_dir
+    key_registry.ACTIVE_KEY_PATH = signing_keys_dir / "active_key.json"
+    key_registry.ROTATION_STATE_PATH = signing_keys_dir / "rotation_state.json"
+    key_registry.LEGACY_PRIVATE_KEY_PATH = signing_key_path
+    key_registry.LEGACY_PUBLIC_KEY_PATH = legacy_pub_path
 
     memory_engine = importlib.reload(importlib.import_module("tessrax.core.memory_engine"))
     ledger_verify = importlib.reload(importlib.import_module("tessrax.ledger.verify_ledger"))
@@ -34,9 +42,6 @@ def test_truth_lock_alignment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     memory_engine.LEDGER_PATH = ledger_path
     memory_engine.INDEX_PATH = index_path
-    memory_engine.SIGNING_KEY_PATH = signing_key_path
-    memory_engine.SIGNING_KEYS_DIR = signing_keys_dir
-    memory_engine.LEGACY_PUBLIC_KEY_PATH = legacy_pub_path
 
     ledger_verify.LEDGER_PATH = ledger_path
     ledger_verify.INDEX_PATH = index_path

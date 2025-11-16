@@ -1,4 +1,4 @@
-"""Generate Ed25519 signing + verification keys for Tessrax OS."""
+"""Generate or rotate Ed25519 signing keys via the key registry."""
 
 from __future__ import annotations
 
@@ -7,34 +7,28 @@ import sys
 from pathlib import Path
 from typing import Tuple
 
-from nacl.signing import SigningKey
+from tessrax.infra import key_registry
 
 INFRA_DIR = Path(__file__).resolve().parent
-PRIVATE_KEY_PATH = INFRA_DIR / "signing_key.pem"
-PUBLIC_KEY_PATH = INFRA_DIR / "signing_key.pub"
-SIGNING_KEYS_DIR = INFRA_DIR / "signing_keys"
 DEFAULT_KEY_ID = os.getenv("TESSRAX_KEY_ID", "legacy")
 
 
-def generate(force: bool = False, *, key_id: str = DEFAULT_KEY_ID) -> Tuple[Path, Path]:
-    INFRA_DIR.mkdir(parents=True, exist_ok=True)
-    SIGNING_KEYS_DIR.mkdir(parents=True, exist_ok=True)
-    if not force and (PRIVATE_KEY_PATH.exists() or PUBLIC_KEY_PATH.exists()):
-        raise FileExistsError(
-            "Signing key already exists. Pass --force to overwrite (will invalidate old signatures)."
-        )
+def generate(
+    force: bool = False,
+    *,
+    key_id: str = DEFAULT_KEY_ID,
+    reason: str = "manual-generate",
+    governance_token: str | None = None,
+) -> Tuple[Path, Path]:
+    """Rotate to ``key_id`` via the registry, returning (private, public) paths."""
 
-    signing_key = SigningKey.generate()
-    private_hex = signing_key.encode().hex()
-    public_hex = signing_key.verify_key.encode().hex()
-
-    PRIVATE_KEY_PATH.write_text(private_hex + "\n", encoding="utf-8")
-    os.chmod(PRIVATE_KEY_PATH, 0o600)
-    PUBLIC_KEY_PATH.write_text(public_hex + "\n", encoding="utf-8")
-    keyed_public_path = SIGNING_KEYS_DIR / f"{key_id}.pub"
-    keyed_public_path.write_text(public_hex + "\n", encoding="utf-8")
-
-    return PRIVATE_KEY_PATH, keyed_public_path
+    token = governance_token or os.getenv("TESSRAX_GOVERNANCE_TOKEN", "manual")
+    return key_registry.rotate_key(
+        reason=reason,
+        governance_token=token,
+        new_key_id=key_id,
+        force=force,
+    )
 
 
 def _parse_args(argv: list[str]) -> tuple[bool, str]:

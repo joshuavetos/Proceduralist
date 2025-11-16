@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from nacl.signing import SigningKey
 
@@ -34,6 +34,7 @@ LEGACY_PRIVATE_KEY_PATH = Path("tessrax/infra/signing_key.pem")
 LEGACY_PUBLIC_KEY_PATH = Path("tessrax/infra/signing_key.pub")
 ACTIVE_KEY_PATH = SIGNING_KEYS_DIR / "active_key.json"
 ROTATION_STATE_PATH = SIGNING_KEYS_DIR / "rotation_state.json"
+ROTATION_RECEIPTS_PATH = SIGNING_KEYS_DIR / "rotation_receipts.json"
 
 DEFAULT_POLICY = {
     "min_hours_between_rotations": 1.0,
@@ -110,10 +111,23 @@ def _persist_material(key_id: str, signing_key: SigningKey) -> Tuple[Path, Path]
     return private_path, public_path
 
 
-def _require_governance(governance_token: str, force: bool) -> None:
+def _parse_token_list(raw: str | None) -> List[str]:
+    if not raw:
+        return []
+    return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _require_governance(governance_token: str, force: bool) -> List[str]:
+    provided = _parse_token_list(governance_token)
+    if not provided:
+        provided = [governance_token]
+    required = _parse_token_list(os.getenv("TESSRAX_REQUIRED_APPROVERS"))
+    if required and not set(required).issubset(set(provided)) and not force:
+        raise PermissionError("Missing required governance approvers")
     expected = os.getenv("TESSRAX_GOVERNANCE_TOKEN")
-    if expected and governance_token != expected and not force:
+    if expected and expected not in provided and not force:
         raise PermissionError("Governance token mismatch; rotation denied")
+    return provided
 
 
 def _rotation_policy(state: Dict[str, Any]) -> Dict[str, float]:
@@ -129,6 +143,16 @@ def _rotation_policy(state: Dict[str, Any]) -> Dict[str, float]:
 def _record_active_key(key_id: str) -> None:
     active_payload = {"key_id": key_id, "updated_at": _utcnow().isoformat()}
     _write_json(ACTIVE_KEY_PATH, active_payload)
+
+
+def _append_rotation_receipt(payload: Dict[str, Any]) -> None:
+    ROTATION_RECEIPTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if ROTATION_RECEIPTS_PATH.exists():
+        existing = json.loads(ROTATION_RECEIPTS_PATH.read_text(encoding="utf-8") or "[]")
+    else:
+        existing = []
+    existing.append(payload)
+    ROTATION_RECEIPTS_PATH.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _promote_new_key(
@@ -191,6 +215,7 @@ def _promote_new_key(
                 },
             }
         )
+        _append_rotation_receipt(cross_record)
 
     private_path, public_path = _persist_material(new_key_id, signing_key)
     state.setdefault("keys", {})[new_key_id] = {
@@ -207,6 +232,7 @@ def _promote_new_key(
             "approver": os.getenv("TESSRAX_ROTATION_APPROVER", AUDITOR_IDENTITY),
             "token_digest": _hash_token(governance_token),
             "issued_at": now.isoformat(),
+            "approvals": _parse_token_list(governance_token),
         },
         "reason": reason,
     }

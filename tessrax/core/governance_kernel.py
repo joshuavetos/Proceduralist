@@ -10,10 +10,12 @@ ensures deterministic behaviour regardless of caller context.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Literal, Optional, Protocol
 import hashlib
 import urllib.parse
+
+from tessrax.core.time import canonical_datetime
+from tessrax.governance.policy_registry import REGISTRY
 
 DecisionType = Literal["LOGGED", "VERIFIED", "ESCALATE", "DEFER"]
 SeverityTier = Literal["low", "medium", "high", "critical"]
@@ -50,7 +52,8 @@ class GovernanceDecision:
     digest: str
 
 
-POLICY_VERSION = "v1.3"
+def _policy_version() -> str:
+    return REGISTRY.active_version()
 BASE_POLICY = {
     "ERROR_PAGE": ("high", "POL#ERR_001"),
     "NOT_FOUND_404": ("high", "POL#ERR_404"),
@@ -140,7 +143,7 @@ def _should_escalate(severity: SeverityTier, category: str, is_root: bool, signa
 
 
 def _timestamp() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return canonical_datetime()
 
 
 def classify_contradiction(node: NodeView, *, recurrence_count: int = 0, first_seen: Optional[str] = None) -> GovernanceDecision:
@@ -166,7 +169,7 @@ def classify_contradiction(node: NodeView, *, recurrence_count: int = 0, first_s
             f"root:{is_root}",
         ),
     )
-    policy_code = f"{base_policy}@{POLICY_VERSION}"
+    policy_code = f"{base_policy}@{_policy_version()}"
     digest = _compute_digest(
         decision_type,
         severity,
@@ -184,7 +187,7 @@ def classify_contradiction(node: NodeView, *, recurrence_count: int = 0, first_s
         node_id=getattr(node, "id", None),
         state_hash=getattr(node, "state_hash", None),
         category=category,
-        tags=("contradiction", f"cat:{category}", f"severity:{severity}", f"policy:{POLICY_VERSION}"),
+        tags=("contradiction", f"cat:{category}", f"severity:{severity}", f"policy:{_policy_version()}"),
         recurrence_count=recurrence_count,
         first_seen=first_seen or now,
         last_seen=now,
@@ -206,7 +209,7 @@ def classify_clean(node: NodeView, *, recurrence_count: int = 0, first_seen: Opt
         },
         rules_applied=("clean_state", f"severity:{severity}"),
     )
-    policy_code = f"POL#CLEAN_000@{POLICY_VERSION}"
+    policy_code = f"POL#CLEAN_000@{_policy_version()}"
     digest = _compute_digest(
         "VERIFIED",
         severity,
@@ -224,7 +227,7 @@ def classify_clean(node: NodeView, *, recurrence_count: int = 0, first_seen: Opt
         node_id=getattr(node, "id", None),
         state_hash=getattr(node, "state_hash", None),
         category="CLEAN",
-        tags=("clean", f"severity:{severity}", f"policy:{POLICY_VERSION}"),
+        tags=("clean", f"severity:{severity}", f"policy:{_policy_version()}"),
         recurrence_count=recurrence_count,
         first_seen=first_seen or now,
         last_seen=now,

@@ -21,8 +21,11 @@ from typing import Dict, List, Tuple
 
 from nacl.signing import VerifyKey
 
+from tessrax.core.errors import TessraxError
 from tessrax.core.memory_engine import CANONICAL_EVENT_TYPES
+from tessrax.core.models import ReceiptPayloadModel
 from tessrax.core.serialization import canonical_json, canonical_payload_hash
+from tessrax.ledger.epochal import EpochLedgerManager, EpochError
 from tessrax.ledger.merkle import MerkleAccumulator, MerkleState, compute_entry_hash
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
@@ -47,8 +50,11 @@ class LedgerRecord:
     previous_entry_hash: str | None
 
 
-class LedgerVerificationError(RuntimeError):
+class LedgerVerificationError(TessraxError):
     """Raised when the verifier encounters integrity issues."""
+
+    def __init__(self, message: str):
+        super().__init__(code="LEDGER_VERIFY", message=message, details=None)
 
 
 def _load_verify_keys() -> Dict[str, VerifyKey]:
@@ -194,6 +200,7 @@ def _read_ledger() -> tuple[List[LedgerRecord], MerkleState]:
     verify_keys: Dict[str, VerifyKey] | None = None
     merkle_state = MerkleState.empty()
     prev_entry_hash: str | None = None
+    epoch_manager = EpochLedgerManager()
 
     if not LEDGER_PATH.exists() or LEDGER_PATH.stat().st_size == 0:
         return records, merkle_state
@@ -212,6 +219,8 @@ def _read_ledger() -> tuple[List[LedgerRecord], MerkleState]:
                 "payload_hash",
                 "audited_state_hash",
                 "signature",
+                "epoch_id",
+                "governance_freshness_tag",
             ]
             merkle_fields = ["entry_hash", "merkle_root"]
             for field in required_fields:
@@ -224,6 +233,8 @@ def _read_ledger() -> tuple[List[LedgerRecord], MerkleState]:
                     raise LedgerVerificationError(
                         f"Missing field '{field}' at line {line_no}"
                     )
+
+            ReceiptPayloadModel.model_validate(entry)
 
             event_type = entry["event_type"]
             if not isinstance(event_type, str):
@@ -288,6 +299,19 @@ def _read_ledger() -> tuple[List[LedgerRecord], MerkleState]:
             if merkle_root != merkle_state.root():
                 raise LedgerVerificationError(
                     f"merkle_root mismatch at line {line_no}"
+                )
+            epoch_id = entry.get("epoch_id")
+            if not isinstance(epoch_id, str):
+                raise LedgerVerificationError(
+                    f"epoch_id at line {line_no} must be a string"
+                )
+            try:
+                recorded_epoch = epoch_manager.get_epoch(entry_hash)
+            except EpochError:
+                recorded_epoch = None
+            if recorded_epoch and recorded_epoch != epoch_id:
+                raise LedgerVerificationError(
+                    f"epoch_id mismatch at line {line_no}"
                 )
             prev_entry_hash = entry_hash
 

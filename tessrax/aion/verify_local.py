@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List
 
+from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
@@ -122,7 +123,12 @@ def _verify_signature(entry: dict, verify_keys: Dict[str, VerifyKey], line_no: i
         signature = bytes.fromhex(signature_hex)
     except ValueError as exc:  # pragma: no cover - corrupted ledger defense
         raise LedgerVerificationError(f"Ledger line {line_no}: invalid signature encoding") from exc
-    key.verify(message, signature)
+    try:
+        key.verify(message, signature)
+    except BadSignatureError as exc:
+        raise LedgerVerificationError(
+            f"Ledger line {line_no}: signature verification failed"
+        ) from exc
 
 
 def _read_receipts() -> List[Receipt]:

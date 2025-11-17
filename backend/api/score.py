@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from backend import auditor, clauses
-from backend.governance import compute_entropy, compute_integrity, compute_severity
+from backend.governance import compute_scores_and_publish
 from backend.models.db import DBMap, SessionLocal
 
 router = APIRouter()
@@ -24,12 +24,10 @@ async def compute_scores(map_id: int) -> dict[str, float]:
         session.close()
 
     try:
-        severity = compute_severity(map_id)
-        entropy = compute_entropy(map_id)
-        integrity = compute_integrity(map_id)
+        result = compute_scores_and_publish(map_id)
     except Exception as exc:  # pragma: no cover - deterministic failure surfacing
         raise HTTPException(status_code=500, detail=f"Score computation failed: {exc}") from exc
-    return {"severity": severity, "entropy": entropy, "integrity": integrity}
+    return result
 
 
 auditor_metadata = {"auditor": auditor, "clauses": clauses}

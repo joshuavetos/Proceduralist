@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import List, Set
 
 from backend import auditor, clauses
-from backend.models.db import DBEdge, DBMap, DBNode, SessionLocal
+from backend.models.db import DBEdge, DBMap, DBMapHistory, DBNode, SessionLocal
 
 severity_map = {
     "disabled_action": 0.4,
@@ -107,6 +107,59 @@ def compute_integrity(map_id: int) -> float:
         map_record.integrity_score = integrity_score
         session.commit()
         return integrity_score
+    finally:
+        session.close()
+
+
+def compute_scores_and_publish(map_id: int) -> dict[str, float]:
+    """Compute scores, record history, and auto-publish the map."""
+
+    if map_id <= 0:
+        raise ValueError("Map id must be positive")
+
+    severity = compute_severity(map_id)
+    entropy = compute_entropy(map_id)
+    integrity = compute_integrity(map_id)
+
+    session = SessionLocal()
+    try:
+        map_record = _get_map_or_raise(session, map_id)
+
+        nodes: List[DBNode] = session.query(DBNode).filter(DBNode.map_id == map_id).all()
+        edges: List[DBEdge] = session.query(DBEdge).filter(DBEdge.map_id == map_id).all()
+
+        contradictions = 0
+        for node in nodes:
+            if node.is_contradiction or node.contradiction_type:
+                assert node.contradiction_type, "Contradiction node missing contradiction_type"
+                contradictions += 1
+        for edge in edges:
+            if edge.is_contradiction or edge.contradiction_type:
+                assert edge.contradiction_type, "Contradiction edge missing contradiction_type"
+                contradictions += 1
+
+        history_entry = DBMapHistory(
+            map_id=map_id,
+            severity=severity,
+            entropy=entropy,
+            integrity=integrity,
+            contradictions=contradictions,
+        )
+        session.add(history_entry)
+
+        map_record.status = "published"
+        map_record.severity_score = severity
+        map_record.entropy_score = entropy
+        map_record.integrity_score = integrity
+
+        session.commit()
+
+        return {
+            "severity": severity,
+            "entropy": entropy,
+            "integrity": integrity,
+            "contradictions": contradictions,
+        }
     finally:
         session.close()
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
 
 from backend import auditor, clauses
@@ -30,9 +30,12 @@ def _serialize_map(record: DBMap) -> Dict[str, Any]:
 async def list_maps(status: str | None = None) -> List[Dict[str, Any]]:
     session: Session = SessionLocal()
     try:
-        query = session.query(DBMap)
-        if status:
-            query = query.filter(DBMap.status == status)
+        allowed_status = {"draft", "published", "archived"}
+        target_status = "published" if status is None else status
+        if target_status not in allowed_status:
+            raise HTTPException(status_code=400, detail="Invalid map status filter")
+
+        query = session.query(DBMap).filter(DBMap.status == target_status)
         records = query.order_by(DBMap.id.asc()).all()
         return [_serialize_map(record) for record in records]
     finally:

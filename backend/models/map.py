@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from backend import auditor, clauses
 
@@ -21,6 +21,7 @@ class Map:
     start_url: str
     status: str = "draft"
     id: Optional[int] = field(default=None)
+    temp_graph: Optional[Dict[str, Any]] = field(default=None)
 
     def __post_init__(self) -> None:
         assert self.title, "Map.title must be non-empty"
@@ -54,6 +55,16 @@ class MapStore:
                 raise KeyError(f"Map {map_id} not found")
             record = self._data[map_id]
             record.status = status
+            self._data[map_id] = record
+            return record
+
+    def update_temp_graph(self, map_id: int, graph: Dict[str, Any]) -> Map:
+        assert graph is not None, "graph must be provided"
+        with self._lock:
+            if map_id not in self._data:
+                raise KeyError(f"Map {map_id} not found")
+            record = self._data[map_id]
+            record.temp_graph = graph
             self._data[map_id] = record
             return record
 

@@ -15,6 +15,7 @@ export default function GalleryEntry() {
   const [actionMessage, setActionMessage] = useState(null);
   const [crawlTitle, setCrawlTitle] = useState("");
   const [crawlUrl, setCrawlUrl] = useState("");
+  const [queueSnapshot, setQueueSnapshot] = useState(null);
 
   useEffect(() => {
     if (!id) return;
@@ -46,7 +47,28 @@ export default function GalleryEntry() {
       }
     };
     load();
+    const interval = setInterval(load, 6000);
+    return () => clearInterval(interval);
   }, [id]);
+
+  useEffect(() => {
+    const loadQueue = async () => {
+      try {
+        const response = await fetch("/api/queue/status");
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(detail || "Queue status fetch failed");
+        }
+        const payload = await response.json();
+        setQueueSnapshot(payload);
+      } catch (err) {
+        setError(err.message);
+      }
+    };
+    loadQueue();
+    const interval = setInterval(loadQueue, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const nodeDegrees = useMemo(() => {
     const degrees = {};
@@ -58,6 +80,20 @@ export default function GalleryEntry() {
     });
     return degrees;
   }, [graph.edges]);
+
+  const progressFor = (status, nodes, edges) => {
+    const stage = {
+      draft: 0.05,
+      queued: 0.15,
+      running: 0.55,
+      published: 1,
+      failed: 1,
+      archived: 1,
+    };
+    const base = stage[status] ?? 0;
+    const momentum = Math.min(0.35, (nodes + edges) * 0.01);
+    return Math.min(1, base + momentum);
+  };
 
   const runAnalysis = async () => {
     if (!id) return;
@@ -125,6 +161,15 @@ export default function GalleryEntry() {
             <h2>Summary</h2>
             <span className={`status status-${summary.status}`}>{summary.status}</span>
           </div>
+          <div className="progress-row">
+            <div className="progress">
+              <div
+                className="progress-fill"
+                style={{ width: `${Math.round(progressFor(summary.status, summary.nodes, summary.edges) * 100)}%` }}
+              />
+            </div>
+            <p className="muted small">Live progress updates while the crawl runs.</p>
+          </div>
           <div className="metrics">
             <div>
               <p className="metric-label">Nodes</p>
@@ -158,6 +203,23 @@ export default function GalleryEntry() {
             <a href={`/api/store/download/${id}?format=pdf`} download>
               Download PDF export
             </a>
+          </div>
+        </section>
+      )}
+
+      {queueSnapshot && (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Queue status</h2>
+            <p className="muted">Depth: {queueSnapshot.queue_depth}</p>
+          </div>
+          <div className="status-grid">
+            {Object.entries(queueSnapshot.status_totals || {}).map(([status, count]) => (
+              <div key={status} className="card-inline">
+                <p className="metric-label">{status}</p>
+                <p className="metric-value">{count}</p>
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -278,9 +340,14 @@ export default function GalleryEntry() {
         .status-queued { background: #e7f1ff; color: #0a3f8f; }
         .status-draft { background: #f4f4f4; color: #333; }
         .status-failed { background: #fde7e9; color: #a1161a; }
+        .status-archived { background: #f4f4f4; color: #333; }
         .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
         .metric-label { color: #666; margin: 0; font-size: 0.9rem; }
         .metric-value { margin: 0.1rem 0 0; font-weight: 700; }
+        .progress-row { display: grid; gap: 0.3rem; margin-top: 0.75rem; }
+        .progress { height: 10px; background: #eef2f7; border-radius: 999px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #0f6abf, #00a2ff); }
+        .small { font-size: 0.9rem; }
         .export-row { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
         .export-row a { color: #0f6abf; text-decoration: none; font-weight: 600; }
         .export-row a:hover { text-decoration: underline; }
@@ -289,6 +356,7 @@ export default function GalleryEntry() {
         .card { border: 1px solid #e0e0e0; border-radius: 6px; padding: 0.75rem; background: white; }
         .card-title { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
         .badge { margin-left: 0.5rem; padding: 0.1rem 0.4rem; background: #ffe6e6; border: 1px solid #f5b5b5; border-radius: 4px; }
+        .card-inline { border: 1px solid #e0e0e0; border-radius: 6px; padding: 0.75rem; background: white; }
         button { padding: 0.5rem 1rem; background: #0f6abf; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0a5596; }
         .analysis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }

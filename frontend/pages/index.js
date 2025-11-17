@@ -21,6 +21,7 @@ export default function Home() {
       <h1>Proceduralist Gallery</h1>
       <div className="grid">
         <Card title="New Audit" href="/new-audit" description="Start a new Proceduralist audit" />
+        <Card title="Admin Settings" href="/admin" description="Publish, archive, or delete audits" />
       </div>
       <style jsx>{`
         .container { padding: 2rem; font-family: sans-serif; }

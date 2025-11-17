@@ -16,6 +16,12 @@ class _SynchronousQueue:
     def enqueue(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
         return func(*args, **kwargs)
 
+    def __len__(self) -> int:
+        return 0
+
+    def count(self) -> int:  # pragma: no cover - parity shim
+        return 0
+
 
 def get_queue() -> Queue | _SynchronousQueue:
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")

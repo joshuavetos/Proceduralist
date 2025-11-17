@@ -6,3 +6,9 @@
 pytest>=8.0
 pytest-cov>=4.1
 ruff>=0.3
+fastapi>=0.110
+pydantic>=2.6
+redis>=5.0
+rq>=1.15
+requests>=2.31
+SQLAlchemy>=2.0

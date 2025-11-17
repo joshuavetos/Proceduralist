@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from backend import auditor, clauses
+from backend.api import analyze as analyze_api
 from backend.api import audit as audit_api
 from backend.api import context as context_api
 from backend.api import download as download_api
@@ -16,8 +17,9 @@ from backend.api import summary as summary_api
 from backend.api import store as store_api
 from backend.api import compare as compare_api
 
-app = FastAPI(title="Proceduralist Backend", version="2.0.0")
+app = FastAPI(title="Proceduralist Backend", version="3.0.0")
 app.include_router(audit_api.router)
+app.include_router(analyze_api.router)
 app.include_router(context_api.router)
 app.include_router(download_api.router)
 app.include_router(graph_api.router)

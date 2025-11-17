@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -42,6 +43,9 @@ class DBMap(Base):
     title = Column(String, nullable=False)
     start_url = Column(String, nullable=False)
     status = Column(String, nullable=False, default="draft")
+    severity_score = Column(Float, nullable=True, default=None)
+    entropy_score = Column(Float, nullable=True, default=None)
+    integrity_score = Column(Float, nullable=True, default=None)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

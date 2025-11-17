@@ -46,6 +46,8 @@ class DBMap(Base):
     severity_score = Column(Float, nullable=True, default=None)
     entropy_score = Column(Float, nullable=True, default=None)
     integrity_score = Column(Float, nullable=True, default=None)
+    tags = Column(JSON, nullable=True)
+    description = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -53,6 +55,9 @@ class DBMap(Base):
 
     nodes = relationship("DBNode", back_populates="map", cascade="all, delete-orphan")
     edges = relationship("DBEdge", back_populates="map", cascade="all, delete-orphan")
+    history = relationship(
+        "DBMapHistory", back_populates="map", cascade="all, delete-orphan"
+    )
 
 
 class DBNode(Base):
@@ -110,6 +115,20 @@ def init_db() -> None:
 
 
 auditor_metadata = {"auditor": auditor, "clauses": clauses}
+
+
+class DBMapHistory(Base):
+    __tablename__ = "map_history"
+
+    id = Column(Integer, primary_key=True)
+    map_id = Column(Integer, ForeignKey("maps.id", ondelete="CASCADE"), nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    severity = Column(Float, nullable=False)
+    entropy = Column(Float, nullable=False)
+    integrity = Column(Float, nullable=False)
+    contradictions = Column(Integer, nullable=False)
+
+    map = relationship("DBMap", back_populates="history")
 
 # Initialize the schema on import to guarantee availability for all endpoints.
 init_db()

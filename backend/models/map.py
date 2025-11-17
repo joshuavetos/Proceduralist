@@ -17,7 +17,7 @@ from backend.models.db import DBMap, SessionLocal, init_db
 class MapRepository:
     """Repository for CRUD operations on ``DBMap`` records."""
 
-    VALID_STATUSES = {"draft", "queued", "running", "published", "failed"}
+    VALID_STATUSES = {"draft", "queued", "running", "published", "failed", "archived"}
 
     def __init__(self) -> None:
         init_db()

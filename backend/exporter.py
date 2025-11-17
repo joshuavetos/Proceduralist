@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, List, Tuple
 
@@ -84,32 +85,41 @@ def export_map_json(map_id: int) -> bytes:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
 
 
-def _draw_header(pdf: canvas.Canvas, title: str) -> float:
+def _draw_header(pdf: canvas.Canvas, title: str, subtitle: str) -> float:
     _, height = letter
     pdf.setFont("Helvetica-Bold", 16)
     pdf.drawString(72, height - 64, title)
-    pdf.setFont("Helvetica", 11)
-    y_position = height - 88
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(72, height - 80, subtitle)
+    y_position = height - 100
     return y_position
 
 
-def _maybe_new_page(pdf: canvas.Canvas, y_position: float) -> float:
+def _draw_footer(pdf: canvas.Canvas, page_number: int) -> None:
+    pdf.setFont("Helvetica", 9)
+    pdf.drawString(72, 42, f"Generated: {datetime.utcnow().isoformat()}Z")
+    pdf.drawRightString(letter[0] - 72, 42, f"Page {page_number}")
+
+
+def _maybe_new_page(pdf: canvas.Canvas, y_position: float, page_number: int) -> Tuple[float, int]:
     if y_position < 72:
+        _draw_footer(pdf, page_number)
         pdf.showPage()
+        page_number += 1
         pdf.setFont("Helvetica", 11)
-        return letter[1] - 64
-    return y_position
+        return letter[1] - 80, page_number
+    return y_position, page_number
 
 
 def export_map_pdf(map_id: int) -> bytes:
     map_record, nodes, edges = _load_map_assets(map_id)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
-    y = _draw_header(pdf, f"Proceduralist Audit Export: {map_record.title}")
+    page_number = 1
+    subtitle = f"Start URL: {map_record.start_url}"
+    y = _draw_header(pdf, f"Proceduralist Audit Export: {map_record.title}", subtitle)
 
     pdf.drawString(72, y, f"Map ID: {map_record.id} | Status: {map_record.status}")
-    y -= 16
-    pdf.drawString(72, y, f"Start URL: {map_record.start_url}")
     y -= 16
     pdf.drawString(
         72,
@@ -129,19 +139,23 @@ def export_map_pdf(map_id: int) -> bytes:
             contradiction_entries.append(f"Edge {edge.id}: {edge.contradiction_type or 'contradiction'}")
 
     pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(72, y, "Summary")
+    pdf.drawString(72, y, "Summary Table")
     y -= 16
     pdf.setFont("Helvetica", 11)
-    pdf.drawString(90, y, f"Nodes: {len(nodes)}  Edges: {len(edges)}  Contradictions: {len(contradiction_entries)}")
+    pdf.drawString(90, y, f"Nodes: {len(nodes)}")
+    y -= 14
+    pdf.drawString(90, y, f"Edges: {len(edges)}")
+    y -= 14
+    pdf.drawString(90, y, f"Contradictions: {len(contradiction_entries)}")
     y -= 20
 
     pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(72, y, "Contradictions")
+    pdf.drawString(72, y, "Contradiction List")
     y -= 16
     pdf.setFont("Helvetica", 11)
     if contradiction_entries:
         for entry in contradiction_entries:
-            y = _maybe_new_page(pdf, y)
+            y, page_number = _maybe_new_page(pdf, y, page_number)
             pdf.drawString(90, y, f"- {entry}")
             y -= 14
     else:
@@ -149,25 +163,25 @@ def export_map_pdf(map_id: int) -> bytes:
         y -= 14
 
     pdf.setFont("Helvetica-Bold", 12)
-    y = _maybe_new_page(pdf, y - 6)
+    y, page_number = _maybe_new_page(pdf, y - 6, page_number)
     pdf.drawString(72, y, "Nodes")
     y -= 16
     pdf.setFont("Helvetica", 11)
     for node in nodes:
-        y = _maybe_new_page(pdf, y)
+        y, page_number = _maybe_new_page(pdf, y, page_number)
         label = node.title or node.url
         suffix = f" [{node.contradiction_type}]" if node.contradiction_type else ""
         pdf.drawString(90, y, f"#{node.id} {label}{suffix}")
         y -= 14
 
     pdf.setFont("Helvetica-Bold", 12)
-    y = _maybe_new_page(pdf, y - 6)
+    y, page_number = _maybe_new_page(pdf, y - 6, page_number)
     pdf.drawString(72, y, "Edges")
     y -= 16
     pdf.setFont("Helvetica", 11)
     if edges:
         for edge in edges:
-            y = _maybe_new_page(pdf, y)
+            y, page_number = _maybe_new_page(pdf, y, page_number)
             descriptor = f"#{edge.id}: {edge.from_node_id} -> {edge.to_node_id or 'terminal'}"
             suffix = f" [{edge.contradiction_type}]" if edge.contradiction_type else ""
             pdf.drawString(90, y, f"{descriptor}{suffix} ({edge.action_label})")
@@ -176,6 +190,7 @@ def export_map_pdf(map_id: int) -> bytes:
         pdf.drawString(90, y, "No edges recorded")
         y -= 14
 
+    _draw_footer(pdf, page_number)
     pdf.save()
     return buffer.getvalue()
 

@@ -62,7 +62,7 @@ def _serialize_map(record: DBMap) -> Dict[str, Any]:
 async def list_maps(status: str | None = None) -> List[Dict[str, Any]]:
     session: Session = SessionLocal()
     try:
-        allowed_status = {"draft", "published", "archived"}
+        allowed_status = {"draft", "published", "archived", "queued", "running", "failed"}
         target_status = "published" if status is None else status
         if target_status not in allowed_status:
             raise HTTPException(status_code=400, detail="Invalid map status filter")
@@ -78,7 +78,7 @@ async def list_maps(status: str | None = None) -> List[Dict[str, Any]]:
 async def create_map(payload: CreateMapRequest) -> Dict[str, Any]:
     session: Session = SessionLocal()
     try:
-        allowed_status = {"draft", "published", "archived"}
+        allowed_status = {"draft", "published", "archived", "queued", "running", "failed"}
         status = payload.status if payload.status is not None else "draft"
         if status not in allowed_status:
             raise HTTPException(status_code=400, detail="Invalid map status")
@@ -199,7 +199,7 @@ async def update_map(map_id: int, payload: UpdateMapRequest) -> Dict[str, Any]:
 async def update_map_status(map_id: int, status: str) -> Dict[str, Any]:
     session: Session = SessionLocal()
     try:
-        allowed_status = {"draft", "published", "archived"}
+        allowed_status = {"draft", "published", "archived", "queued", "running", "failed"}
         if status not in allowed_status:
             raise HTTPException(status_code=400, detail="Invalid map status")
 

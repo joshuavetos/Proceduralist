@@ -1,65 +1,17 @@
 # Proceduralist
 
+Proceduralist is a high‑assurance governance and verification engine that combines an append‑only ledger, policy‑driven decision kernel, deterministic hashing, and audit‑ready reporting. The project ships with a FastAPI backend, a minimal Next.js frontend, and a CLI toolchain that exercises the full Tessrax governance stack.
+
 ![Build](https://github.com/joshuavetos/Proceduralist/actions/workflows/tests.yml/badge.svg)
 ![Coverage](https://img.shields.io/codecov/c/github/joshuavetos/Proceduralist)
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-active-brightgreen)
-
-Proceduralist is a high‑assurance governance and verification engine designed for systems where determinism, traceability, and audit integrity must be guaranteed. It provides a unified framework for append‑only ledgering, policy‑driven decision making, verifiable state transitions, and cryptographically signed memory operations.
-
-This repository contains the reference implementation of the Proceduralist Engine.
 
 ---
 
-## Overview
+## Quick start
 
-Proceduralist integrates four core components:
-
-### 1. Ledger System  
-A Merkle‑verified, append‑only ledger with:
-
-- hash‑chained entries  
-- canonical serialization  
-- corruption detection and recovery  
-- indexed historical lookup  
-- reproducible state replay  
-
-### 2. Governance Kernel  
-A policy‑driven decision engine featuring:
-
-- quorum simulation  
-- version‑pinned policies  
-- rollback capability  
-- governance token freshness checks  
-- deterministic decision receipts  
-
-### 3. Memory Engine  
-A signing and serialization layer providing:
-
-- canonical JSON normalization  
-- immutable payload snapshots  
-- Ed25519 signatures (PyNaCl or OpenSSL fallback)  
-- deterministic hashing  
-- reproducible cold‑start behavior  
-
-### 4. Verification Pipeline  
-End‑to‑end integrity checks:
-
-- environment cold‑boot verification  
-- state divergence detection  
-- exception consistency rules  
-- reproducibility tests  
-- strict serialization guarantees  
-
----
-
-## Installation
-
-Requirements: **Python 3.11+**
-
-The repository is fully hermetic: simply install the pinned test toolchain and
-run the suite.
+Requirements: **Python 3.11+** with `pip` available.
 
 ```bash
 git clone https://github.com/joshuavetos/Proceduralist.git
@@ -68,87 +20,116 @@ pip install -r requirements.txt
 pytest -q
 ```
 
+Key entry points:
+
+- CLI: `python -m tessrax.cli.tessraxctl <command>`
+- Backend (FastAPI): `uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000`
+- Frontend (Next.js): run with your preferred Next.js runner against the backend API
+
 ---
 
-## Running Tests
+## What Proceduralist provides
+
+- **Ledger engine** — append‑only JSONL ledger with Merkle‑verified state, canonical serialization, snapshot/export tooling, and deterministic replay.
+- **Governance kernel** — quorum simulation, policy receipts, receipt diffing, and governance replay with contradiction stress testing.
+- **Diagnostics & audits** — reproducibility auditor, cold‑boot/environment validator, repository health checker, drift/divergence scanner, and automatic Merkle/index repair.
+- **Developer tooling** — CLI (`tessraxctl`) exposes deterministic subcommands, FastAPI backend surfaces REST endpoints, and a lightweight Next.js UI provides quick audit interactions.
+
+---
+
+## Repository structure
+
+```
+backend/       FastAPI application (routers under backend/api) and queue/analyzer helpers
+frontend/      Minimal Next.js UI for starting audits
+tessrax/       Core governance, ledger, diagnostics, hashing, and CLI modules
+docs/          Reference guides (CLI, usage, reproducibility, roadmap, diagrams)
+tests/         Pytest suite covering governance, ledger, and diagnostic flows
+docker-compose.yml  Dev stack with PostgreSQL and backend service
+```
+
+---
+
+## CLI usage (`tessraxctl`)
+
+All commands emit JSON for deterministic downstream processing. Run from the repo root:
+
+```bash
+python -m tessrax.cli.tessraxctl auto-diagnose           # Aggregated diagnostics
+python -m tessrax.cli.tessraxctl health-check            # Repository health scan
+python -m tessrax.cli.tessraxctl repro-audit             # Reproducibility audit
+python -m tessrax.cli.tessraxctl stress-harness /tmp/ledger.jsonl --entries 512
+python -m tessrax.cli.tessraxctl governance-replay /tmp/ledger.jsonl
+python -m tessrax.cli.tessraxctl snapshot-export /tmp/ledger.snapshot
+python -m tessrax.cli.tessraxctl snapshot-restore /tmp/ledger.snapshot
+python -m tessrax.cli.tessraxctl divergence-scan ledger.jsonl index.db merkle_state.json
+python -m tessrax.cli.tessraxctl load-test /tmp/receipts.jsonl --batches 5 --batch-size 2500
+```
+
+See [`docs/CLI.md`](docs/CLI.md) and [`docs/USAGE.md`](docs/USAGE.md) for the full matrix of commands and workflows.
+
+---
+
+## Running the backend API
+
+The FastAPI service exposes governance analysis, audit, replay, and history endpoints via routers defined in `backend/api`.
+
+```bash
+pip install -r requirements.txt
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+Alternatively, start the PostgreSQL + backend stack with Docker Compose:
+
+```bash
+docker-compose up --build
+```
+
+The Compose file provisions PostgreSQL with health checks, installs dependencies, and launches the backend on port **8000**.
+
+---
+
+## Frontend
+
+The `frontend/` directory contains a minimal Next.js UI with two pages:
+
+- `pages/index.js` — landing page linking to audit creation
+- `pages/new-audit.js` — form that POSTs to `/api/audit/start` and routes to `/gallery/{id}` on success
+
+Point the frontend at the running backend API to initiate and view audits.
+
+---
+
+## Testing & quality
+
+Run the full test suite:
 
 ```bash
 pytest -q
 ```
 
-Coverage + XML report (used by the CI + Codecov workflow):
+Generate coverage with XML output (used by CI + Codecov):
 
 ```bash
 pytest --cov=tessrax --cov-report=term-missing --cov-report=xml
 ```
 
----
-
-## Project Structure
-
-```
-tessrax/
-  core/
-    memory_engine.py
-    governance_kernel.py
-    serialization.py
-  infra/
-    key_registry.py
-  ledger/
-    ledger.jsonl
-    index.db
-    merkle_state.json
-tests/
-docs/
-```
+Static analysis uses `ruff` according to the pinned version in `requirements.txt`.
 
 ---
 
 ## Documentation
 
-Extended documentation and architectural references are in:
-
-- `docs/ROADMAP.md`
-- `docs/architecture.svg`
-- `tessrax/core/` inline module documentation
-
----
-
-## Roadmap Summary
-
-Future enhancements include:
-
-- ledger snapshot formats  
-- multi‑signature governance  
-- sharded ledger and parallel replay  
-- deterministic hash pipelines (BLAKE3 optional)  
-- visualization and inspection tooling  
-- Rust‑backed hashing module  
-- expanded test matrices  
-
-Full roadmap is maintained in `docs/ROADMAP.md`.
-
----
-
-## Design Principles
-
-Proceduralist is built around four principles:
-
-### Determinism  
-Identical results across environments, cold starts, and machines.
-
-### Auditability  
-All outputs must be verifiable, reproducible, and permanently traceable.
-
-### Integrity  
-No hidden state, no silent mutation, no ambiguous serialization.
-
-### Governance as Code  
-All decisions governed by explicit, inspectable, versioned policy.
+- [`docs/CLI.md`](docs/CLI.md) — command reference for `tessraxctl`
+- [`docs/USAGE.md`](docs/USAGE.md) — deterministic workflows and sample invocations
+- [`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md) — reproducibility auditor internals
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — planned enhancements and milestones
+- [`docs/MODULES.md`](docs/MODULES.md) — module-level responsibilities
+- [`docs/architecture.svg`](docs/architecture.svg) — high-level architecture diagram
 
 ---
 
 ## License
 
-Proceduralist is released under the MIT License.  
-See `LICENSE` for details.
+Proceduralist is released under the MIT License. See [`LICENSE`](LICENSE) for details.
+

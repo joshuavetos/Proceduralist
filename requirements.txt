@@ -11,4 +11,5 @@ pydantic>=2.6
 redis>=5.0
 rq>=1.15
 requests>=2.31
+selenium>=4.19
 SQLAlchemy>=2.0

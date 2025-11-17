@@ -13,6 +13,9 @@ from backend.models.db import DBEdge, DBMap, DBNode, SessionLocal
 
 
 def _load_map_assets(map_id: int) -> Tuple[DBMap, List[DBNode], List[DBEdge]]:
+    if map_id <= 0:
+        raise ValueError("Map identifier must be positive")
+
     session = SessionLocal()
     try:
         map_record = session.get(DBMap, map_id)
@@ -155,6 +158,22 @@ def export_map_pdf(map_id: int) -> bytes:
         label = node.title or node.url
         suffix = f" [{node.contradiction_type}]" if node.contradiction_type else ""
         pdf.drawString(90, y, f"#{node.id} {label}{suffix}")
+        y -= 14
+
+    pdf.setFont("Helvetica-Bold", 12)
+    y = _maybe_new_page(pdf, y - 6)
+    pdf.drawString(72, y, "Edges")
+    y -= 16
+    pdf.setFont("Helvetica", 11)
+    if edges:
+        for edge in edges:
+            y = _maybe_new_page(pdf, y)
+            descriptor = f"#{edge.id}: {edge.from_node_id} -> {edge.to_node_id or 'terminal'}"
+            suffix = f" [{edge.contradiction_type}]" if edge.contradiction_type else ""
+            pdf.drawString(90, y, f"{descriptor}{suffix} ({edge.action_label})")
+            y -= 14
+    else:
+        pdf.drawString(90, y, "No edges recorded")
         y -= 14
 
     pdf.save()

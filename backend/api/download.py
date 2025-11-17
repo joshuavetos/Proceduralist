@@ -11,6 +11,9 @@ router = APIRouter()
 
 @router.get("/api/store/download/{map_id}")
 async def download_map(map_id: int, format: str = Query(..., pattern="^(json|pdf)$")) -> Response:
+    if map_id <= 0:
+        raise HTTPException(status_code=400, detail="Map id must be positive")
+
     if format == "json":
         try:
             payload = export_map_json(map_id)

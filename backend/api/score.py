@@ -12,6 +12,9 @@ router = APIRouter()
 
 @router.post("/api/score/{map_id}")
 async def compute_scores(map_id: int) -> dict[str, float]:
+    if map_id <= 0:
+        raise HTTPException(status_code=400, detail="Map id must be positive")
+
     session = SessionLocal()
     try:
         map_record = session.get(DBMap, map_id)
@@ -20,9 +23,12 @@ async def compute_scores(map_id: int) -> dict[str, float]:
     finally:
         session.close()
 
-    severity = compute_severity(map_id)
-    entropy = compute_entropy(map_id)
-    integrity = compute_integrity(map_id)
+    try:
+        severity = compute_severity(map_id)
+        entropy = compute_entropy(map_id)
+        integrity = compute_integrity(map_id)
+    except Exception as exc:  # pragma: no cover - deterministic failure surfacing
+        raise HTTPException(status_code=500, detail=f"Score computation failed: {exc}") from exc
     return {"severity": severity, "entropy": entropy, "integrity": integrity}
 
 

@@ -11,8 +11,11 @@ export default function Storefront() {
   useEffect(() => {
     const load = async () => {
       try {
-        const response = await fetch("/api/maps?status=published");
-        if (!response.ok) throw new Error("Failed to load published maps");
+        const response = await fetch("/api/maps");
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Failed to load published maps");
+        }
         const payload = await response.json();
         setMaps(payload);
       } catch (err) {
@@ -57,6 +60,9 @@ export default function Storefront() {
             <li key={map.id} className="card">
               <h3>{map.title}</h3>
               <p className="muted">Start URL: {map.start_url}</p>
+              <p className="scoreline">
+                Severity: {map.severity_score ?? 0} | Entropy: {map.entropy_score ?? 0}
+              </p>
               <button onClick={() => startCheckout(map.id)}>Buy Export</button>
             </li>
           ))}
@@ -67,6 +73,7 @@ export default function Storefront() {
         .grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
         .card { border: 1px solid #e0e0e0; padding: 1rem; border-radius: 8px; }
         .muted { color: #555; font-size: 0.9rem; }
+        .scoreline { color: #333; font-size: 0.9rem; margin-top: 0.25rem; }
         button { margin-top: 0.5rem; padding: 0.5rem 1rem; background: #0f6abf; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0a5596; }
         .error { color: #b00020; }

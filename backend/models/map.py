@@ -1,76 +1,72 @@
-"""Map data model and in-memory store.
+"""Map persistence layer backed by SQLAlchemy.
 
-This module follows the governance clauses for determinism and includes
-assertions to prevent silent failures when creating or updating Map
-records.
+Runtime checks enforce deterministic status transitions and prevent silent
+failures when interacting with the database-backed map repository.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Optional
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from backend import auditor, clauses
+from backend.models.db import DBMap, SessionLocal, init_db
 
 
-@dataclass
-class Map:
-    """Represents an audit map with minimal lifecycle fields."""
+class MapRepository:
+    """Repository for CRUD operations on ``DBMap`` records."""
 
-    title: str
-    start_url: str
-    status: str = "draft"
-    id: Optional[int] = field(default=None)
-    temp_graph: Optional[Dict[str, Any]] = field(default=None)
-
-    def __post_init__(self) -> None:
-        assert self.title, "Map.title must be non-empty"
-        assert self.start_url, "Map.start_url must be non-empty"
-        assert self.status in {"draft", "queued", "running", "published", "failed"}, (
-            "Map.status must be a valid lifecycle state"
-        )
-
-
-class MapStore:
-    """Thread-safe in-memory repository for ``Map`` instances."""
+    VALID_STATUSES = {"draft", "queued", "running", "published", "failed"}
 
     def __init__(self) -> None:
-        self._lock = Lock()
-        self._data: Dict[int, Map] = {}
-        self._next_id = 1
+        init_db()
 
-    def create(self, title: str, start_url: str) -> Map:
-        with self._lock:
-            new_map = Map(title=title, start_url=start_url, status="draft", id=self._next_id)
-            self._data[self._next_id] = new_map
-            self._next_id += 1
-        return new_map
+    def _get_session(self) -> Session:
+        return SessionLocal()
 
-    def update_status(self, map_id: int, status: str) -> Map:
-        assert status in {"draft", "queued", "running", "published", "failed"}, (
-            "Map.status must be a valid lifecycle state"
-        )
-        with self._lock:
-            if map_id not in self._data:
+    def create(self, title: str, start_url: str) -> DBMap:
+        assert title, "Map.title must be non-empty"
+        assert start_url, "Map.start_url must be non-empty"
+        session = self._get_session()
+        try:
+            new_map = DBMap(title=title, start_url=start_url, status="draft")
+            session.add(new_map)
+            session.commit()
+            session.refresh(new_map)
+            assert new_map.id is not None, "Persistent map id must be assigned"
+            return new_map
+        except SQLAlchemyError as exc:  # pragma: no cover - defensive runtime guard
+            session.rollback()
+            raise RuntimeError(f"Failed to create map: {exc}") from exc
+        finally:
+            session.close()
+
+    def update_status(self, map_id: int, status: str) -> DBMap:
+        assert status in self.VALID_STATUSES, "Map.status must be a valid lifecycle state"
+        session = self._get_session()
+        try:
+            record = session.get(DBMap, map_id)
+            if record is None:
                 raise KeyError(f"Map {map_id} not found")
-            record = self._data[map_id]
             record.status = status
-            self._data[map_id] = record
+            session.add(record)
+            session.commit()
+            session.refresh(record)
             return record
+        except SQLAlchemyError as exc:  # pragma: no cover - defensive runtime guard
+            session.rollback()
+            raise RuntimeError(f"Failed to update map {map_id}: {exc}") from exc
+        finally:
+            session.close()
 
-    def update_temp_graph(self, map_id: int, graph: Dict[str, Any]) -> Map:
-        assert graph is not None, "graph must be provided"
-        with self._lock:
-            if map_id not in self._data:
-                raise KeyError(f"Map {map_id} not found")
-            record = self._data[map_id]
-            record.temp_graph = graph
-            self._data[map_id] = record
+    def get(self, map_id: int) -> Optional[DBMap]:
+        session = self._get_session()
+        try:
+            record = session.get(DBMap, map_id)
             return record
-
-    def get(self, map_id: int) -> Optional[Map]:
-        with self._lock:
-            return self._data.get(map_id)
+        finally:
+            session.close()
 
 
 auditor_metadata = {"auditor": auditor, "clauses": clauses}

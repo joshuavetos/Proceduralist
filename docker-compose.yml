@@ -1,0 +1,42 @@
+version: "3.9"
+
+x-backend-base: &backend-base
+  image: python:3.11-slim
+  working_dir: /app
+  volumes:
+    - ./:/app
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-proceduralist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-proceduralist}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proceduralist} -d ${POSTGRES_DB:-proceduralist} -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    <<: *backend-base
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-proceduralist}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-proceduralist}
+    ports:
+      - "8000:8000"
+    command: >
+      /bin/sh -c "pip install --no-cache-dir -r requirements.txt && \
+      uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  postgres_data:

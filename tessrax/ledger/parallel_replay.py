@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import List, Tuple
 
 from tessrax.core.errors import LedgerRepairError
 from tessrax.ledger.merkle import MerkleState, compute_entry_hash

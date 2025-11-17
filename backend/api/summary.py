@@ -41,6 +41,7 @@ async def get_summary(map_id: int) -> dict:
         return {
             "map_id": record.id,
             "title": record.title,
+            "start_url": record.start_url,
             "status": record.status,
             "nodes": len(nodes),
             "edges": len(edges),

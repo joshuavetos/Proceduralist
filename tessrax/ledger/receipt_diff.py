@@ -1,7 +1,7 @@
 """Semantic diff utilities for ledger receipts."""
 from __future__ import annotations
 
-from typing import Iterable, List, Mapping
+from typing import List, Mapping
 
 
 def semantic_diff(left: Mapping[str, object], right: Mapping[str, object]) -> List[tuple[str, object, object]]:

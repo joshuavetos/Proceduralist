@@ -5,14 +5,9 @@ import json
 import os
 import sqlite3
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 import tessrax.core.memory_engine as core_memory
 import tessrax.infra.key_registry as key_registry

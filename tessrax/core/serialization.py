@@ -1,7 +1,7 @@
 """Canonical serialisation utilities for Tessrax (TESST-compliant).
 
 All helpers enforce deterministic encoding guarantees so that ledger payloads
-can be hashed, signed, and replayed across cold environments.  Nested mappings
+can be hashed, signed, and replayed across cold environments. Nested mappings
 are normalised recursively to satisfy Deterministic Serialisation v2 and the
 Governance Kernel clauses (AEP-001, RVC-001, EAC-001).
 """
@@ -144,10 +144,28 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(canonical_payload).encode("utf-8")).hexdigest()
 
 
+def canonical_serialize(obj: Any) -> bytes:
+    """Return canonical, deterministic UTF-8 encoded bytes for any Python object.
+
+    This function normalizes the input object by sorting dictionary keys,
+    standardizing float and datetime representations, and then serializes it
+    to a compact JSON string, finally encoding it to UTF-8 bytes.
+    """
+    normalized_obj = _normalize(obj)
+    json_string = json.dumps(
+        normalized_obj,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return json_string.encode("utf-8")
+
+
 __all__ = [
     "FrozenPayload",
     "canonical_json",
     "canonical_payload_hash",
+    "canonical_serialize",
     "normalize_payload",
     "snapshot_payload",
 ]

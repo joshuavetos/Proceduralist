@@ -26,17 +26,24 @@ class DeterministicHasher:
 
     def __init__(self, algorithm: str = "sha256") -> None:
         self.algorithm = algorithm.lower()
-        try:
-            self._hasher = hashlib.new(self.algorithm)
-        except ValueError as exc:  # pragma: no cover - defensive guard
-            raise ValueError(f"Unsupported hash algorithm '{algorithm}'") from exc
+        if self.algorithm == "blake3":
+            blake3_module = _load_blake3()
+            if blake3_module is None:
+                raise RuntimeError("blake3 package is not installed; install 'blake3' for optional support")
+            self._hasher = blake3_module.blake3()
+        else:
+            try:
+                self._hasher = hashlib.new(self.algorithm)
+            except ValueError as exc:  # pragma: no cover - defensive guard
+                raise ValueError(f"Unsupported hash algorithm '{algorithm}'") from exc
         self._bytes = 0
 
-    def update(self, data: bytes) -> None:
+    def update(self, data: bytes) -> "DeterministicHasher":
         if not isinstance(data, (bytes, bytearray)):
             raise TypeError("Hasher update expects bytes-like input")
         self._hasher.update(data)
         self._bytes += len(data)
+        return self # FIX: Enables method chaining
 
     def update_payload(self, payload: Mapping[str, object]) -> None:
         canonical = canonical_json(normalize_payload(payload)).encode("utf-8")

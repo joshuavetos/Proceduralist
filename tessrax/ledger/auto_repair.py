@@ -142,6 +142,7 @@ def auto_repair(
     report = {
         "repaired_at": canonical_datetime(),
         "ledger_entries_after_repair": 0,
+        "entries_replayed": 0,
         "index_entries_rebuilt": 0,
         "merkle_root_rebuilt": False,
         "merkle_root": None,
@@ -162,6 +163,7 @@ def auto_repair(
         raise LedgerRepairError("No entries found in ledger to process; auto-repair aborted.")
 
     report["ledger_entries_after_repair"] = len(entries_to_process)
+    report["entries_replayed"] = len(entries_to_process)
 
     # Replay ledger to get observed_root from the (potentially repaired) ledger
     # Using parallel_replay_root as it's the original method for MerkleAccumulator compatibility

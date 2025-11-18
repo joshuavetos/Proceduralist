@@ -111,4 +111,49 @@ def restore_snapshot(
     return metadata
 
 
-__all__ = ["LedgerSnapshot", "SnapshotMetadata", "export_snapshot", "restore_snapshot"]
+def import_ledger_entries(snapshot_path: Path) -> list[dict[str, Any]]:
+    """Load ledger entries from a JSON snapshot file.
+
+    The snapshot must follow the structure produced by :func:`export_snapshot`.
+    Each entry in ``ledger_lines`` is parsed as JSON; malformed content raises
+    a ``DiagnosticError`` to avoid silently ignoring corrupted data.
+    """
+
+    if not snapshot_path.exists():
+        raise DiagnosticError(f"Snapshot missing at {snapshot_path}")
+
+    payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    ledger_lines = payload.get("ledger_lines")
+
+    if ledger_lines is None:
+        raise DiagnosticError(f"Snapshot at {snapshot_path} is missing 'ledger_lines'")
+
+    entries: list[dict[str, Any]] = []
+    for idx, raw_line in enumerate(ledger_lines):
+        line = str(raw_line).strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise DiagnosticError(
+                f"Invalid JSON in ledger_lines[{idx}] for snapshot {snapshot_path}"
+            ) from exc
+
+        if not isinstance(entry, dict):
+            raise DiagnosticError(
+                f"Ledger entry at ledger_lines[{idx}] in {snapshot_path} is not an object"
+            )
+
+        entries.append(entry)
+
+    return entries
+
+
+__all__ = [
+    "LedgerSnapshot",
+    "SnapshotMetadata",
+    "export_snapshot",
+    "restore_snapshot",
+    "import_ledger_entries",
+]

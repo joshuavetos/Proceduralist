@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import Landing from "./Landing";
 import Footer from "./components/Footer";
 
@@ -30,16 +29,12 @@ function Dashboard() {
       <header className="nav">
         <div className="brand">Proceduralist</div>
         <nav className="nav-links">
-          <Link href="/" legacyBehavior>
-            <a className="nav-link" aria-label="Return home">
-              Home
-            </a>
-          </Link>
-          <Link href="/admin" legacyBehavior>
-            <a className="nav-link" aria-label="Admin settings">
-              Admin
-            </a>
-          </Link>
+          <a className="nav-link" href="/" aria-label="Return home">
+            Home
+          </a>
+          <a className="nav-link" href="/admin" aria-label="Admin settings">
+            Admin
+          </a>
         </nav>
       </header>
       <main className="app-grid">
@@ -52,12 +47,10 @@ function Dashboard() {
         </div>
         <div className="grid">
           {cards.map((card) => (
-            <Link key={card.title} href={card.href} legacyBehavior>
-              <a className="card" aria-label={card.title}>
-                <h2>{card.title}</h2>
-                <p>{card.description}</p>
-              </a>
-            </Link>
+            <a key={card.title} className="card" href={card.href} aria-label={card.title}>
+              <h2>{card.title}</h2>
+              <p>{card.description}</p>
+            </a>
           ))}
         </div>
       </main>

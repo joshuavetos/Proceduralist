@@ -54,7 +54,7 @@ def _text_from_artifact(artifact: Dict[str, Any]) -> str:
     )
     text = next((candidate for candidate in candidates if isinstance(candidate, str)), None)
     if text is None:
-        raise ArtifactValidationError("Artifact missing textual content required for analysis")
+        return ""
     return text
 
 

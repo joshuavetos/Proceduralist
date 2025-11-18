@@ -1,8 +1,8 @@
-"""Deterministic forensic PDF report generator compliant with governance clauses."""
+"""Professional forensic PDF generator for audit findings."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List
+from datetime import datetime
+from typing import Any, Dict, List, Tuple
 
 from fpdf import FPDF
 
@@ -15,109 +15,128 @@ class ForensicReportPDF(FPDF):
     def __init__(self, ledger_id: str) -> None:
         assert ledger_id, "ledger_id is required for header integrity"
         super().__init__(orientation="P", unit="mm", format="A4")
-        self.ledger_id = self._coerce_text(ledger_id)
-        self.generated_at = datetime.now(timezone.utc)
+        self.ledger_id = str(ledger_id)
+        self.generated_at = datetime.utcnow()
         self.set_auto_page_break(auto=True, margin=15)
         self.set_creator(GOVERNANCE_METADATA["auditor"])
         self.set_title("Proceduralist Audit Record")
 
     def header(self) -> None:  # pragma: no cover - exercised indirectly via generate
-        self.set_font("Helvetica", "B", 12)
-        self.cell(0, 10, "Proceduralist Audit Record", ln=1)
-        self.set_font("Helvetica", size=10)
-        timestamp = self.generated_at.isoformat()
-        self.cell(0, 8, f"Timestamp: {timestamp}", ln=1)
-        self.cell(0, 8, f"Ledger ID: {self.ledger_id}", ln=1)
-        self.ln(2)
+        self.set_font("Arial", "B", 15)
+        self.set_text_color(37, 99, 235)
+        self.cell(80)
+        self.cell(30, 10, "PROCEDURALIST", 0, 0, "C")
+        self.ln(8)
+
+        self.set_font("Arial", "I", 8)
+        self.set_text_color(128, 128, 128)
+        timestamp = self.generated_at.strftime("%Y-%m-%d %H:%M")
+        self.cell(0, 10, f"Cryptographic Audit Record • Generated {timestamp}", 0, 0, "C")
+        self.ln(20)
 
     def footer(self) -> None:  # pragma: no cover - exercised indirectly via generate
         self.set_y(-15)
-        self.set_font("Helvetica", "I", 8)
-        page_label = f"Page {self.page_no()}/{{nb}}"
-        verification_label = "Cryptographically Verified"
-        self.cell(0, 6, verification_label, align="L")
-        self.cell(0, 6, page_label, align="R")
+        self.set_font("Arial", "I", 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f"Page {self.page_no()} • Ledger {self.ledger_id}", 0, 0, "C")
+
+    def chapter_title(self, label: str) -> None:
+        self.set_font("Arial", "B", 12)
+        self.set_fill_color(240, 245, 255)
+        self.set_text_color(0, 0, 0)
+        self.cell(0, 10, f"  {label}", 0, 1, "L", 1)
+        self.ln(4)
+
+    def chapter_body(self, body: str) -> None:
+        self.set_font("Arial", "", 10)
+        self.multi_cell(0, 6, body)
+        self.ln()
+
+    def add_contradiction(self, contradiction: Dict[str, Any]) -> None:
+        self.set_font("Arial", "B", 10)
+        self.set_text_color(220, 53, 69)
+        ctype = str(contradiction.get("type", "UNKNOWN")).upper()
+        severity = str(contradiction.get("severity", "info")).upper()
+        self.cell(0, 8, f"TYPE: {ctype} ({severity})", 0, 1)
+
+        self.set_font("Arial", "", 10)
+        self.set_text_color(0, 0, 0)
+        doc_a = contradiction.get("docA") or {}
+        doc_b = contradiction.get("docB") or {}
+        self.cell(10)
+        self.cell(0, 6, f"Source A ({doc_a.get('name', 'unknown')}): {doc_a.get('text', '')}", 0, 1)
+        self.cell(10)
+        self.cell(0, 6, f"Source B ({doc_b.get('name', 'unknown')}): {doc_b.get('text', '')}", 0, 1)
+        self.ln(4)
 
     def generate(self, report_data: Dict[str, Any]) -> bytes:
-        """Render the forensic PDF and return its bytes."""
-
         self._validate_report(report_data)
-        summary = report_data.get("summary", {})
+        summary = report_data["summary"]
         contradictions: List[Dict[str, Any]] = list(report_data.get("contradictions", []))
-        merkle_root = self._coerce_text(summary.get("merkle_root", ""))
-
-        if not merkle_root:
-            raise ValueError("Summary must include a merkle_root to anchor the ledger header")
 
         self.alias_nb_pages()
         self.add_page()
 
-        self._render_summary(summary, len(contradictions))
-        self.ln(4)
-        self._render_contradictions(contradictions)
+        self.chapter_title("Executive Summary")
+        summary_text = self._summary_block(summary, len(contradictions))
+        self.chapter_body(summary_text)
+
+        self.chapter_title("Critical Findings")
+        if contradictions:
+            for item in contradictions:
+                self.add_contradiction(item)
+        else:
+            self.chapter_body("No contradictions detected.")
+
+        self.ln(20)
+        self.set_font("Arial", "B", 10)
+        self.cell(0, 10, "_" * 50, 0, 1)
+        self.cell(0, 5, "Authorized Signature", 0, 1)
 
         rendered = self.output(dest="S").encode("latin-1")
         assert rendered, "PDF generation must emit non-empty bytes"
         return rendered
 
-    def _render_summary(self, summary: Dict[str, Any], contradictions_total: int) -> None:
-        self.set_font("Helvetica", "B", 11)
-        self.set_fill_color(230, 230, 230)
-        self.cell(0, 10, "Audit Summary", ln=1, fill=True)
-
-        rows = [
-            ("Contradictions", str(summary.get("contradictions", contradictions_total))),
-            ("Violations", str(summary.get("violations", 0))),
-            ("Merkle Root", self._coerce_text(summary.get("merkle_root", ""))),
-        ]
-
-        for label, value in rows:
-            self.set_font("Helvetica", "B", 10)
-            self.cell(50, 8, label, border=1)
-            self.set_font("Helvetica", size=10)
-            self.multi_cell(0, 8, self._coerce_text(value), border=1)
-
-    def _render_contradictions(self, contradictions: Iterable[Dict[str, Any]]) -> None:
-        self.set_font("Helvetica", "B", 11)
-        self.set_text_color(0, 0, 0)
-        self.cell(0, 10, "Contradictions", ln=1)
-        self.set_font("Helvetica", size=10)
-
-        has_entries = False
-        for item in contradictions:
-            has_entries = True
-            severity = self._coerce_text(item.get("severity", "info")).lower()
-            description = self._coerce_text(item.get("description", "No description provided."))
-            location = self._coerce_text(item.get("location", "Unknown location"))
-
-            if severity in {"critical", "high", "error"}:
-                self.set_text_color(200, 0, 0)
-            else:
-                self.set_text_color(0, 0, 0)
-
-            self.multi_cell(0, 8, f"[{severity.upper()}] {location}", border="B")
-            self.set_text_color(60, 60, 60)
-            self.multi_cell(0, 8, description)
-            self.ln(2)
-
-        if not has_entries:
-            self.set_text_color(0, 100, 0)
-            self.multi_cell(0, 8, "No contradictions detected.")
-        self.set_text_color(0, 0, 0)
-
     @staticmethod
-    def _coerce_text(value: Any) -> str:
-        text = "" if value is None else str(value)
-        return text.encode("latin-1", "replace").decode("latin-1")
+    def _summary_block(summary: Dict[str, Any], contradiction_count: int) -> str:
+        audit_id = summary.get("auditId") or summary.get("merkle_root") or "unknown"
+        merkle_root = summary.get("merkleRoot") or summary.get("merkle_root") or "unknown"
+        return (
+            f"Audit ID: {audit_id}\n"
+            f"Merkle Root: {merkle_root}\n\n"
+            f"Total Contradictions Found: {summary.get('contradictions', contradiction_count)}\n"
+            f"Critical Violations: {summary.get('violations', 0)}"
+        )
 
     @staticmethod
     def _validate_report(report_data: Dict[str, Any]) -> None:
         if not isinstance(report_data, dict):
             raise TypeError("report_data must be a dictionary containing summary and contradictions")
-        if "summary" not in report_data:
+        summary = report_data.get("summary")
+        if not isinstance(summary, dict):
             raise ValueError("report_data must include a summary section")
+        if "merkle_root" not in summary and "merkleRoot" not in summary and "auditId" not in summary:
+            raise ValueError("summary must contain merkle_root, merkleRoot, or auditId for ledger anchoring")
         if "contradictions" not in report_data:
             raise ValueError("report_data must include a contradictions array")
 
 
-__all__ = ["ForensicReportPDF"]
+def generate_pdf(report_data: Dict[str, Any]) -> Tuple[bytes, str]:
+    """Create a forensic PDF and return the bytes and SHA-256 digest."""
+
+    generator = ForensicReportPDF(ledger_id=str(report_data.get("summary", {}).get("merkle_root", "unknown")))
+    pdf_bytes = generator.generate(report_data)
+    digest = _sha256(pdf_bytes)
+    return pdf_bytes, digest
+
+
+def _sha256(payload: bytes) -> str:
+    import hashlib
+
+    digest = hashlib.sha256(payload).hexdigest()
+    if len(digest) != 64:
+        raise RuntimeError("SHA-256 digest calculation failed")
+    return digest
+
+
+__all__ = ["ForensicReportPDF", "generate_pdf"]

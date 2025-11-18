@@ -1,0 +1,13 @@
+# auditor: "Tessrax Governance Kernel v16"
+# clauses: ["AEP-001","RVC-001","EAC-001","POST-AUDIT-001","DLK-001","TESST"]
+app = "proceduralist-v3"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.backend"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true

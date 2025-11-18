@@ -22,6 +22,7 @@ export default function Home() {
       <div className="grid">
         <Card title="New Audit" href="/new-audit" description="Start a new Proceduralist audit" />
         <Card title="Admin Settings" href="/admin" description="Publish, archive, or delete audits" />
+        <Card title="What It Solves" href="/what-it-solves" description="See how Proceduralist resolves governance and UX drift" />
       </div>
       <style jsx>{`
         .container { padding: 2rem; font-family: sans-serif; }

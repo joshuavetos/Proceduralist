@@ -5,10 +5,13 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, List, Dict
 
 from tessrax.core.errors import DiagnosticError
-from tessrax.ledger.merkle import MerkleAccumulator
-from tessrax.ledger.parallel_replay import parallel_replay_root
+from tessrax.core.ledger_replay import LedgerReplayEngine  # New import
+from tessrax.ledger.receipt_diff import calculate_delta_diff  # New import
+from tessrax.ledger.merkle import MerkleAccumulator  # Existing import
+from tessrax.ledger.parallel_replay import parallel_replay_root  # Existing import
 
 LEDGER_PATH = Path("tessrax/ledger/ledger.jsonl")
 MERKLE_STATE_PATH = Path("tessrax/ledger/merkle_state.json")
@@ -109,4 +112,48 @@ def analyze_root_cause(report: DivergenceReport) -> RootCauseAnalysis:
     return RootCauseAnalysis(classification="UNKNOWN", details="Unable to isolate root cause")
 
 
-__all__ = ["DivergenceReport", "RootCauseAnalysis", "analyze_root_cause", "scan_state_divergence"]
+@dataclass(frozen=True)
+class DivergenceDetectionReport:
+    roots_match: bool
+    root_a: str
+    root_b: str
+    detailed_diff: Dict[str, List[Any]]
+
+
+class DivergenceDetector:
+    """Detects and reports divergences between two sets of ledger entries."""
+    def __init__(self, primary_entries: List[Any], secondary_entries: List[Any]) -> None:
+        self.primary_entries = primary_entries
+        self.secondary_entries = secondary_entries
+
+    def detect_divergence(self) -> DivergenceDetectionReport:
+        # Calculate Merkle roots for both sets of entries
+        replay_engine_a = LedgerReplayEngine(self.primary_entries)
+        root_a = replay_engine_a.get_merkle_root()
+        replay_engine_b = LedgerReplayEngine(self.secondary_entries)
+        root_b = replay_engine_b.get_merkle_root()
+        roots_match = (root_a == root_b)
+        detailed_diff = {
+            'added': [],
+            'removed': [],
+            'modified': []
+        }
+        if not roots_match:
+            # If roots differ, calculate a detailed delta diff
+            detailed_diff = calculate_delta_diff(self.primary_entries, self.secondary_entries)
+        return DivergenceDetectionReport(
+            roots_match=roots_match,
+            root_a=root_a,
+            root_b=root_b,
+            detailed_diff=detailed_diff
+        )
+
+
+__all__ = [
+    "DivergenceReport",
+    "RootCauseAnalysis",
+    "analyze_root_cause",
+    "scan_state_divergence",
+    "DivergenceDetector",  # New export
+    "DivergenceDetectionReport"  # New export
+]

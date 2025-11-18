@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from server.services import engine
+from server.services.pdf_generator import ForensicReportPDF
 
 router = APIRouter(prefix="/api", tags=["audit"])
 GOVERNANCE_METADATA = engine.GOVERNANCE_METADATA
@@ -81,4 +83,38 @@ async def run_audit(
         summary=summary,
         contradictions=[Contradiction(**item) for item in contradictions],
         governance=GOVERNANCE_METADATA,
+    )
+
+
+@router.post("/audit/pdf", response_class=StreamingResponse, status_code=status.HTTP_200_OK)
+async def generate_audit_pdf(report: dict = Body(..., embed=False)) -> StreamingResponse:
+    """Generate a deterministic PDF for a supplied audit report."""
+
+    if not isinstance(report, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audit PDF generation requires a JSON object payload.",
+        )
+
+    summary_section = report.get("summary")
+    if not isinstance(summary_section, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Audit PDF summary section is missing or malformed.",
+        )
+
+    merkle_root = summary_section.get("merkle_root")
+    if not merkle_root:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Summary must include a merkle_root for ledger anchoring.",
+        )
+
+    generator = ForensicReportPDF(ledger_id=str(merkle_root))
+    pdf_bytes = generator.generate(report)
+
+    return StreamingResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=audit-report.pdf"},
     )

@@ -5,6 +5,8 @@ import hashlib
 import json
 from typing import Any, Dict, List
 
+from server.services.contradictions import detect_conflicts
+
 try:  # AEP-001: validate serialization imports eagerly.
     from tessrax.core.serialization import canonical_serialize, canonical_payload_hash
     from tessrax.core.merkle import MerkleTree
@@ -139,35 +141,7 @@ def run_deterministic_core(artifacts: List[Dict[str, Any]]) -> str:
 def detect_contradictions(artifacts: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     """Apply deterministic checks for obvious contradictions."""
 
-    contradictions: List[Dict[str, str]] = []
-    seen_hashes: Dict[str, str] = {}
-
-    for artifact in artifacts:
-        artifact_hash = artifact["sha256"]
-        artifact_type = artifact["type"]
-        location = f"{artifact_type}:{artifact.get('name', artifact.get('value', 'payload'))}"
-
-        if artifact["length"] == 0:
-            contradictions.append(
-                {
-                    "location": location,
-                    "description": "Zero-length artifact detected; content absent.",
-                    "severity": "warning",
-                }
-            )
-
-        if artifact_hash in seen_hashes and seen_hashes[artifact_hash] != artifact_type:
-            contradictions.append(
-                {
-                    "location": location,
-                    "description": "Content hash reused across heterogeneous artifacts.",
-                    "severity": "info",
-                }
-            )
-        else:
-            seen_hashes[artifact_hash] = artifact_type
-
-    return contradictions
+    return detect_conflicts(artifacts)
 
 
 def count_artifacts(artifacts: List[Dict[str, Any]]) -> Dict[str, int]:

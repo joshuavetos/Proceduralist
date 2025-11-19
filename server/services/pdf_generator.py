@@ -31,14 +31,14 @@ class ForensicReportPDF(FPDF):
         self.set_font("Arial", "I", 8)
         self.set_text_color(128, 128, 128)
         timestamp = self.generated_at.strftime("%Y-%m-%d %H:%M")
-        self.cell(0, 10, f"Cryptographic Audit Record • Generated {timestamp}", 0, 0, "C")
+        self.cell(0, 10, f"Cryptographic Audit Record - Generated {timestamp}", 0, 0, "C")
         self.ln(20)
 
     def footer(self) -> None:  # pragma: no cover - exercised indirectly via generate
         self.set_y(-15)
         self.set_font("Arial", "I", 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f"Page {self.page_no()} • Ledger {self.ledger_id}", 0, 0, "C")
+        self.cell(0, 10, f"Page {self.page_no()} - Ledger {self.ledger_id}", 0, 0, "C")
 
     def chapter_title(self, label: str) -> None:
         self.set_font("Arial", "B", 12)
@@ -93,7 +93,8 @@ class ForensicReportPDF(FPDF):
         self.cell(0, 10, "_" * 50, 0, 1)
         self.cell(0, 5, "Authorized Signature", 0, 1)
 
-        rendered = self.output(dest="S").encode("latin-1")
+        rendered_raw = self.output(dest="S")
+        rendered = bytes(rendered_raw) if isinstance(rendered_raw, (bytes, bytearray)) else str(rendered_raw).encode("latin-1")
         assert rendered, "PDF generation must emit non-empty bytes"
         return rendered
 

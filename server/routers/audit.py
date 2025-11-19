@@ -41,8 +41,11 @@ class AuditReport(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    auditId: str
+    merkleRoot: str
     summary: SummaryStats
     contradictions: list[Contradiction]
+    findings: list[str]
     governance: dict
 
 
@@ -67,8 +70,7 @@ async def run_audit(
     await _validate_inputs(files, text, url)
 
     artifacts = await engine.ingest_data(files=files, text=text, url=url)
-    merkle_root = engine.run_deterministic_core(artifacts)
-    contradictions = engine.detect_contradictions(artifacts)
+    result = engine.run_engine(artifacts)
 
     counts = engine.count_artifacts(artifacts)
     summary = SummaryStats(
@@ -76,12 +78,15 @@ async def run_audit(
         file_count=counts["file"],
         text_present=counts["text"] > 0,
         url_present=counts["url"] > 0,
-        merkle_root=merkle_root,
+        merkle_root=result["merkleRoot"],
     )
 
     return AuditReport(
+        auditId=result["auditId"],
+        merkleRoot=result["merkleRoot"],
         summary=summary,
-        contradictions=[Contradiction(**item) for item in contradictions],
+        contradictions=[Contradiction(**item) for item in result["contradictions"]],
+        findings=list(result.get("findings", [])),
         governance=GOVERNANCE_METADATA,
     )
 

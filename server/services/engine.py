@@ -144,6 +144,27 @@ def detect_contradictions(artifacts: List[Dict[str, Any]]) -> List[Dict[str, str
     return detect_conflicts(artifacts)
 
 
+def run_engine(artifacts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the deterministic pipeline and return normalized JSON."""
+
+    if not artifacts:
+        raise ValueError("run_engine requires at least one artifact")
+
+    merkle_root = run_deterministic_core(artifacts)
+    contradictions = detect_contradictions(artifacts)
+    findings = [str(item.get("description") or item.get("type", "finding")) for item in contradictions]
+
+    response = {
+        "auditId": merkle_root,
+        "merkleRoot": merkle_root,
+        "contradictions": contradictions,
+        "findings": findings,
+    }
+
+    assert response["auditId"] == response["merkleRoot"], "Audit ID and Merkle Root drift detected"
+    return response
+
+
 def count_artifacts(artifacts: List[Dict[str, Any]]) -> Dict[str, int]:
     counts = {"file": 0, "text": 0, "url": 0}
     for artifact in artifacts:
@@ -156,5 +177,6 @@ __all__ = [
     "ingest_data",
     "run_deterministic_core",
     "detect_contradictions",
+    "run_engine",
     "count_artifacts",
 ]
